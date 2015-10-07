@@ -1,0 +1,26 @@
+{
+    "name": "mekit/metodo-sugar-sync",
+    "type": "project",
+    "description": "Sync between Metodo(MSSQL) and SugarCrm(MySql)",
+    "homepage": "https://github.com/Mekit/MetodoSugarSync",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Mekit",
+            "homepage": "http://www.mekit.it"
+        }
+    ],
+    "require": {
+    },
+    "scripts": {
+
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-0": {
+            "Mekit": "src/"
+        }
+    },
+    "extra": {}
+}
