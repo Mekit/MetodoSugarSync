@@ -1,0 +1,7 @@
+#!/usr/bin/env php
+<?php
+set_time_limit(0);
+@include_once __DIR__ . '/vendor/autoload.php';
+use Mekit\Console\Application;
+$app = new Application('Mekit Sync Application', '1.0');
+$app->run();

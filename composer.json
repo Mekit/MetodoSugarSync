@@ -11,6 +11,10 @@
         }
     ],
     "require": {
+      "psr/log": "^1.0",
+      "swiftmailer/swiftmailer": "^5.4",
+      "symfony/yaml": "^2.6",
+      "symfony/filesystem": "^2.6",
       "symfony/console": "^2.6"
     },
     "scripts": {

@@ -1,0 +1,12 @@
+config:
+  global:
+    log_to_console: true
+    temporary_path: /home/jack/Projects/MetodoSugarSync/tmp
+    v2: hello
+  commands:
+    test:
+      v1: this is for the command "test"
+    sync-sugar:
+      v1: this is for the command "sync-sugar"
+    sync-metodo:
+      v1: this is for the command "sync-metodo"
