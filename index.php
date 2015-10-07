@@ -1,5 +1,12 @@
 <?php
 
+/*
+ * "symfony/console": "^2.6",
+        "psr/log": "^1.0",
+        "swiftmailer/swiftmailer": "^5.4",
+        "symfony/yaml": "^2.6",
+        "symfony/filesystem": "^2.6"
+ */
 $serverName = "SERVER2K8-IMP";
 $username = "CrmSync";
 $password = "CrmSync";
