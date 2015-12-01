@@ -3,16 +3,18 @@ configuration:
     log_to_console: true
     temporary_path: /tmp
   databases:
-    imp:
+    db1:
       type: MSSQL
       host: 127.0.0.1
-      database: IMP
+      servername: ODBC-SERVER-NAME
+      database: DB1
       username: user
       password: pwd
-    mekit:
+    db2:
         type: MSSQL
         host: 127.0.0.1
-        database: MEKIT
+        servername: ODBC-SERVER-NAME
+        database: DB2
         username: user
         password: pwd
   commands:
