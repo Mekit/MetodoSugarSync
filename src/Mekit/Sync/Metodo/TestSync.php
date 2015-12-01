@@ -20,17 +20,13 @@ class TestSync extends MetodoSync implements SyncInterface
     parent::__construct($logger);
   }
 
-  public function execute() {
-    $this->log('Executing: ' . static::SYNC_NAME . "...");
-    $this->getData();
-
+  public function syncUp() {
+    $this->log('Executing: ' . static::SYNC_NAME . '(UP)...');
     $this->log(static::SYNC_NAME . " done.");
   }
 
-  protected function getData() {
-    $query = "SELECT TOP 10 * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'DDT'";
-
-
+  public function syncDown() {
+    $this->log('Executing: ' . static::SYNC_NAME . '(DOWN)...');
+    $this->log(static::SYNC_NAME . " done.");
   }
-
 }

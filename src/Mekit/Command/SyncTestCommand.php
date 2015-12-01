@@ -7,13 +7,14 @@
 
 namespace Mekit\Command;
 
+use Mekit\Console\Configuration;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class TestCommand extends Command implements CommandInterface
+class SyncTestCommand extends Command implements CommandInterface
 {
-  const COMMAND_NAME = 'test';
+  const COMMAND_NAME = 'sync:test';
   const COMMAND_DESCRIPTION = 'Run some tests...';
 
   public function __construct() {
@@ -40,17 +41,19 @@ class TestCommand extends Command implements CommandInterface
    */
   protected function execute(InputInterface $input, OutputInterface $output) {
     parent::_execute($input, $output);
+    $this->log("Starting command " . static::COMMAND_NAME . "...");
     $this->checkConfiguration();
     $this->executeCommand();
+    $this->log("Command " . static::COMMAND_NAME . " done.");
   }
 
   /**
    * Execute some configuration checks
    */
   protected function checkConfiguration() {
-    $cfg = $this->getCommandConfiguration(static::COMMAND_NAME);
-    if(!$cfg) {
-      throw new \LogicException("No configuration is defined for the command '".static::COMMAND_NAME."'!");
+    $cfg = Configuration::getConfiguration();
+    if(!isset($cfg["commands"][static::COMMAND_NAME])) {
+      throw new \LogicException("No configuration is defined for the command '". static::COMMAND_NAME ."'!");
     }
   }
 
@@ -58,7 +61,7 @@ class TestCommand extends Command implements CommandInterface
    * Execute Command
    */
   protected function executeCommand() {
-    $this->log(static::COMMAND_NAME . " done.");
+    $this->log(static::COMMAND_NAME . " working...");
   }
 
 }

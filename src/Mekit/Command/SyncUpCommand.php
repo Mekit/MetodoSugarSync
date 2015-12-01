@@ -7,15 +7,16 @@
 
 namespace Mekit\Command;
 
+use Mekit\Console\Configuration;
 use Mekit\Sync\SyncInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SyncSugarCommand extends Command implements CommandInterface
+class SyncUpCommand extends Command implements CommandInterface
 {
-  const COMMAND_NAME = 'sync-sugar';
-  const COMMAND_DESCRIPTION = 'Syncronize SugarCrm from Metodo';
+  const COMMAND_NAME = 'sync:up';
+  const COMMAND_DESCRIPTION = 'Synchronize upwards';
 
   public function __construct() {
     parent::__construct(null);
@@ -43,7 +44,6 @@ class SyncSugarCommand extends Command implements CommandInterface
     parent::_execute($input, $output);
     $this->log("Starting command " . static::COMMAND_NAME . "...");
     $this->checkConfiguration();
-    //$this->
     $this->executeCommand();
     $this->log("Command " . static::COMMAND_NAME . " done.");
   }
@@ -52,21 +52,23 @@ class SyncSugarCommand extends Command implements CommandInterface
    * Execute some configuration checks
    */
   protected function checkConfiguration() {
-    $cfg = $this->getCommandConfiguration(static::COMMAND_NAME);
-    if(!$cfg) {
-      throw new \LogicException("No configuration is defined for the command '".static::COMMAND_NAME."'!");
+    $cfg = Configuration::getConfiguration();
+    if(!isset($cfg["commands"][static::COMMAND_NAME])) {
+      throw new \LogicException("No configuration is defined for the command '". static::COMMAND_NAME ."'!");
     }
+    $cfg = $cfg["commands"][static::COMMAND_NAME];
     if(!isset($cfg['sync'])) {
       throw new \LogicException("No 'sync' key is defined for the command '".static::COMMAND_NAME."'!");
     }
   }
 
   /**
-   * Execute Command
+   * Execute Command - call the syncUp() method on all classes listed in "sync" configuration
    */
   protected function executeCommand() {
-    $cfg = $this->getCommandConfiguration(static::COMMAND_NAME);
-    $syncToolClasses = $cfg['sync'];
+    $cfg = Configuration::getConfiguration();
+    $commandCfg = $cfg["commands"][static::COMMAND_NAME];
+    $syncToolClasses = $commandCfg['sync'];
     foreach($syncToolClasses as $syncToolClass) {
       if(!class_exists($syncToolClass)) {
         throw new \LogicException("There is no class '".$syncToolClass."' by this name!");
@@ -77,7 +79,7 @@ class SyncSugarCommand extends Command implements CommandInterface
 
       /** @var SyncInterface $syncTool */
       $syncTool = new $syncToolClass([$this, 'log']);
-      $syncTool->execute();
+      $syncTool->syncUp();
     }
   }
 }

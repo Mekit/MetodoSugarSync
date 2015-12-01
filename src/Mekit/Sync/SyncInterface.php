@@ -9,6 +9,8 @@ namespace Mekit\Sync;
 
 
 interface SyncInterface {
-  /** Main execution method */
-  function execute();
+  /** Main sync UP method */
+  function syncUp();
+  /** Main sync DOWN method */
+  function syncDown();
 }

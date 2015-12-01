@@ -1,15 +1,16 @@
-config:
+configuration:
   global:
     log_to_console: true
     temporary_path: /home/jack/Projects/MetodoSugarSync/tmp
     v2: hello
   commands:
-    test:
-      v1: this is for the command "test"
-    sync-sugar:
-      description: This is for the command "sync-sugar"
-      sync:
-        - Mekit\Sync\Metodo\TestSync
-    sync-metodo:
-      description: This is for the command "sync-metodo"
-      sync:
+      "sync:test":
+        v1: this is for the command "test"
+      "sync:up":
+        description: Synchronize upwards
+        sync:
+          - Mekit\Sync\Metodo\MetodoSync
+      "sync:down":
+        description: Synchronize downwards
+        sync:
+          - Mekit\Sync\Metodo\MetodoSync

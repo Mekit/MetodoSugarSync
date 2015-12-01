@@ -8,9 +8,7 @@
 namespace Mekit\Console;
 
 use Symfony\Component\Console\Application as BaseApplication;
-//commands
-use Mekit\Command\TestCommand as TestCommand;
-use Mekit\Command\SyncSugarCommand as SyncSugarCommand;
+
 
 class Application extends BaseApplication
 {
@@ -22,7 +20,7 @@ class Application extends BaseApplication
   public function __construct($name, $version)
   {
     parent::__construct($name, $version);
-    $commands = $this->getCommands();
+    $commands = $this->enumerateCommands();
     foreach($commands as $command) {
       $this->add(new $command);
     }
@@ -31,7 +29,7 @@ class Application extends BaseApplication
   /**
    * @return array
    */
-  protected function getCommands() {
+  protected function enumerateCommands() {
     $answer = [];
     $commandsPath = realpath(__DIR__ . '/../Command');
     $commandFiles = glob($commandsPath.'/*Command.php');

@@ -19,8 +19,18 @@ try {
 echo "Successfully connected!\n";
 
 
+//try {
+//  $query = "SELECT * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'OFC'";
+//  $statement = $db->prepare($query);
+//  $statement->execute();
+//  $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+//} catch(Exception $exception) {
+//  die("Unable to execute query!\n" . $exception->getMessage() . "\n");
+//}
+
+
 try {
-  $query = "SELECT * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'OFC'";
+  $query = "SELECT TOP 1000 [CodiceMetodo] FROM [IMP].[dbo].[SogCRM_AnagraficaCF]";
   $statement = $db->prepare($query);
   $statement->execute();
   $result = $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -28,7 +38,7 @@ try {
   die("Unable to execute query!\n" . $exception->getMessage() . "\n");
 }
 
-echo "Documents: " . count($result);
+//echo "Documents: " . count($result);
 
-print_r($result[0]);
+print_r($result);
 echo "\n";
