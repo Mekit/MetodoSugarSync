@@ -22,6 +22,9 @@ class Configuration {
   /** @var array */
   private static $configuration;
 
+  /** @var array */
+  private static $connections;
+
   /**
    * @param string $configurationFilePath
    */
@@ -37,6 +40,31 @@ class Configuration {
       self::loadConfiguration();
     }
     return self::$configuration;
+  }
+
+  /**
+   * @param $databaseName
+   * @return \PDO
+   */
+  public static function getDatabaseConnection($databaseName) {
+    if (!isset(self::$connections[$databaseName])) {
+      $cfg = Configuration::getConfiguration();
+      if(!isset($cfg["databases"][$databaseName]) || !is_array($cfg["databases"][$databaseName])) {
+        throw new \LogicException("Missing configuration for $databaseName in 'databases' section!");
+      }
+      $serverType = $cfg["databases"][$databaseName]["type"];
+      $serverName = $cfg["databases"][$databaseName]["servername"];
+      $username = $cfg["databases"][$databaseName]["username"];
+      $password = $cfg["databases"][$databaseName]["password"];
+      switch($serverType) {
+        case "MSSQL":
+          self::$connections[$databaseName] = new \PDO("odbc:$serverName", "$username", "$password");
+          break;
+        default:
+          throw new \LogicException("The server type($serverType) for $databaseName is not recogniozed!");
+      }
+    }
+    return self::$connections[$databaseName];
   }
 
   /**
