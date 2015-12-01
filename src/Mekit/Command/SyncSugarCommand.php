@@ -7,6 +7,7 @@
 
 namespace Mekit\Command;
 
+use Mekit\Sync\SyncInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -40,8 +41,11 @@ class SyncSugarCommand extends Command implements CommandInterface
    */
   protected function execute(InputInterface $input, OutputInterface $output) {
     parent::_execute($input, $output);
+    $this->log("Starting command " . static::COMMAND_NAME . "...");
     $this->checkConfiguration();
+    //$this->
     $this->executeCommand();
+    $this->log("Command " . static::COMMAND_NAME . " done.");
   }
 
   /**
@@ -52,12 +56,28 @@ class SyncSugarCommand extends Command implements CommandInterface
     if(!$cfg) {
       throw new \LogicException("No configuration is defined for the command '".static::COMMAND_NAME."'!");
     }
+    if(!isset($cfg['sync'])) {
+      throw new \LogicException("No 'sync' key is defined for the command '".static::COMMAND_NAME."'!");
+    }
   }
 
   /**
    * Execute Command
    */
   protected function executeCommand() {
-    $this->log(static::COMMAND_NAME . " done.");
+    $cfg = $this->getCommandConfiguration(static::COMMAND_NAME);
+    $syncToolClasses = $cfg['sync'];
+    foreach($syncToolClasses as $syncToolClass) {
+      if(!class_exists($syncToolClass)) {
+        throw new \LogicException("There is no class '".$syncToolClass."' by this name!");
+      }
+      if (!in_array('Mekit\Sync\SyncInterface', class_implements($syncToolClass))) {
+        throw new \LogicException("Class '".$syncToolClass."' must implement 'Mekit\\MetodoSync\\SyncInterface'!");
+      }
+
+      /** @var SyncInterface $syncTool */
+      $syncTool = new $syncToolClass([$this, 'log']);
+      $syncTool->execute();
+    }
   }
 }

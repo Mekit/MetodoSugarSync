@@ -20,7 +20,7 @@ echo "Successfully connected!\n";
 
 
 try {
-  $query = "SELECT * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'DDT'";
+  $query = "SELECT * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'OFC'";
   $statement = $db->prepare($query);
   $statement->execute();
   $result = $statement->fetchAll(PDO::FETCH_ASSOC);

@@ -7,6 +7,9 @@ config:
     test:
       v1: this is for the command "test"
     sync-sugar:
-      v1: this is for the command "sync-sugar"
+      description: This is for the command "sync-sugar"
+      sync:
+        - Mekit\Sync\Metodo\TestSync
     sync-metodo:
-      v1: this is for the command "sync-metodo"
+      description: This is for the command "sync-metodo"
+      sync:

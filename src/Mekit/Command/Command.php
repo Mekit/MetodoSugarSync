@@ -91,7 +91,7 @@ class Command extends ConsoleCommand
   /**
    * @param string $msg
    */
-  protected function log($msg) {
+  public function log($msg) {
     $log2console = isset($this->configuration['global']['log_to_console']) && $this->configuration['global']['log_to_console'];
     if($log2console) {
       $this->cmdOutput->writeln($msg);
