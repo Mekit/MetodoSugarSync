@@ -33,6 +33,4 @@ class MetodoSync extends Sync implements SyncInterface
     $accountData->execute();
     $this->log(static::SYNC_NAME . " done.");
   }
-
-
 }
