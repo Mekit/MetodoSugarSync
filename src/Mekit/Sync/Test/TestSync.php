@@ -5,11 +5,12 @@
  * Time: 17.45
  */
 
-namespace Mekit\Sync\Metodo;
+namespace Mekit\Sync\Test;
 
+use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
-class TestSync extends MetodoSync implements SyncInterface
+class TestSync extends Sync implements SyncInterface
 {
   const SYNC_NAME = 'test-sync';
 

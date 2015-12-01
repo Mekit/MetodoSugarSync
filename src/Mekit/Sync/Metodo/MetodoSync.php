@@ -7,6 +7,7 @@
 
 namespace Mekit\Sync\Metodo;
 
+use Mekit\Sync\Metodo\Down\AccountData;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
@@ -28,11 +29,10 @@ class MetodoSync extends Sync implements SyncInterface
 
   public function syncDown() {
     $this->log('Executing: ' . static::SYNC_NAME . '(DOWN)...');
+    $accountData = new AccountData($this->logger);
+    $accountData->execute();
     $this->log(static::SYNC_NAME . " done.");
   }
 
-  protected function getData() {
-    $query = "SELECT TOP 10 * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'DDT'";
 
-  }
 }
