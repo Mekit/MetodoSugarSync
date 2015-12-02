@@ -31,16 +31,15 @@ class AccountData {
 
     //$query = "SELECT TOP 10 * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'DDT'";
     public function execute() {
-        $this->log("getting sugarcrm auth...");
         $this->log("getting account data from Metodo...");
         $this->loadIndex();
-        $this->log("Totale Items: " . count($this->index));
+        $this->log("Total Items: " . count($this->index));
         $this->elaborateIndexItems();
     }
 
     protected function elaborateIndexItems() {
         $i = 0;
-        $maxRun = 999999999;
+        $maxRun = 9999999;
         //foreach($this->index as $indexItem) {
         while($indexItem = array_pop($this->index)) {
             if($i >= $maxRun) {
@@ -51,7 +50,10 @@ class AccountData {
 //                continue;
 //            }
 
-            $this->log("------------------------------------------------------------($i):" . $indexItem["CodiceMetodo"]);
+            $this->log(
+                "------------------------------------------------------------($i): '" . $indexItem["CodiceMetodo"]
+                . "' - " . $indexItem["Nome1"]
+            );
             $localItem = $this->loadLocalItem($indexItem);
             //$this->log("Local item: " . json_encode($localItem));
             $remoteItem = $this->loadRemoteItem($indexItem);
@@ -60,25 +62,32 @@ class AccountData {
             //$this->log("Sync item: " . json_encode($syncItem));
             $savedItem = $this->saveRemoteItem($syncItem);
             //$this->log("Saved item: " . json_encode($savedItem));
+            //@todo - saved item should be serialized and saved so next time we don't load it from remote
             $i++;
         }
     }
 
     /**
-     * @param Array $syncItem
-     * @return \stdClass
+     * @param Array|bool $syncItem
+     * @return \stdClass|bool
      */
     protected function saveRemoteItem($syncItem) {
-        if(isset($syncItem["id"])) {
-            //UPDATE
-            $this->log("updating...");
-            $id = $syncItem["id"];
-            unset($syncItem["id"]);
-            $result = $this->sugarCrmRest->comunicate('/Accounts/' . $id, 'PUT', $syncItem);
+        $result = FALSE;
+        if ($syncItem) {
+            if (isset($syncItem["id"])) {
+                //UPDATE
+                $this->log("updating...: " . json_encode($syncItem));
+                $id = $syncItem["id"];
+                unset($syncItem["id"]);
+                $result = $this->sugarCrmRest->comunicate('/Accounts/' . $id, 'PUT', $syncItem);
+            }
+            else {
+                //CREATE
+                $this->log("creating...");
+                $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
+            }
         } else {
-            //CREATE
-            $this->log("creating...");
-            $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
+            $this->log("skipping...");
         }
         return $result;
     }
@@ -91,62 +100,93 @@ class AccountData {
      * @throws \Exception
      */
     protected function createSyncItem($localItem, $remoteItem) {
-
         $syncItem = false;
         if($localItem) {
-            $syncItem = [];
+            $isUpToDate = FALSE;
+            $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($localItem->database, $localItem->Tipologia);
+
             if($remoteItem) {
-                //@todo: confront local(DataDiModifica) and remote(metodo_last_update_time_c) dates
-                //Skip ONLY if CodiceMetodo iIS present on remoteItem
-                if(true) {
-                    //local items has more recent date
+                //confront local(DataDiModifica) and remote(metodo_last_update_time_c) dates
+                //Skip ONLY if CodiceMetodo IS present on remoteItem
+                $remoteCode = trim($remoteItem->$remoteFieldNameForCodiceMetodo);
+                //$this->log("Remote Code($remoteFieldNameForCodiceMetodo): " . $remoteCode);
+                if ($remoteCode) {
+                    $localDataDiModifica = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+                    $remoteDataDiModifica = new \DateTime($remoteItem->metodo_last_update_time_c);
+                    //$this->log("Local mod date: " . $localDataDiModifica->format("c"));
+                    //$this->log("Remote mod date: " . $remoteDataDiModifica->format("c"));
+                    if ($localDataDiModifica > $remoteDataDiModifica) {
+                        $isUpToDate = FALSE;
+                        //$this->log("Needs update!");
+                    }
+                    else {
+                        $isUpToDate = TRUE;
+                        //$this->log("No update needed!");
+                    }
+                }
+            }
+
+            if (!$isUpToDate) {
+                $syncItem = [];
+
+                //Add remote id to sync item so it will be updated
+                if ($remoteItem) {
                     $syncItem["id"] = $remoteItem->id;
                     //@todo: map other stuff?
-
                 }
 
+                //Codice Metodo
+                $syncItem[$remoteFieldNameForCodiceMetodo] = $localItem->CodiceMetodo;
 
+                //Data di Modifica (2011-03-23 17:13:58.180)
+                $dataDiModifica = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+                $syncItem["metodo_last_update_time_c"] = $dataDiModifica->format("c");
+
+                //Other Data
+                $syncItem["name"] = $localItem->Nome1 . (!empty($localItem->Nome2) ? ' - ' . $localItem->Nome2 : '');
+                $syncItem["codice_fiscale_c"] = $localItem->CodiceFiscale;
+                $syncItem["partita_iva_c"] = $localItem->PartitaIva;
             }
-            //CODICE METODO
-            switch($localItem->database) {
-                case "IMP":
-                    switch($localItem->Tipologia) {
-                        case "C":
-                            $syncItem["metodo_client_code_imp_c"] = $localItem->CodiceMetodo;
-                            break;
-                        case "F":
-                            $syncItem["metodo_supplier_code_imp_c"] = $localItem->CodiceMetodo;
-                            break;
-                        default:
-                            throw new \Exception("Local item needs to have Tipologia C|F!");
-                    }
-                    break;
-                case "MEKIT":
-                    switch($localItem->Tipologia) {
-                        case "C":
-                            $syncItem["metodo_client_code_mekit_c"] = $localItem->CodiceMetodo;
-                            break;
-                        case "F":
-                            $syncItem["metodo_supplier_code_mekit_c"] = $localItem->CodiceMetodo;
-                            break;
-                        default:
-                            throw new \Exception("Local item needs to have Tipologia C|F!");
-                    }
-                    break;
-                default:
-                    throw new \Exception("Local item needs to have database IMP|MEKIT!");
-            }
-
-            $syncItem["name"] = $localItem->Nome1 . (!empty($localItem->Nome2) ? ' - ' . $localItem->Nome2 : '');
-            $syncItem["codice_fiscale_c"] = $localItem->CodiceFiscale;
-            $syncItem["partita_iva_c"] = $localItem->PartitaIva;
-
-
-//            $syncItem["sync_codes_c"] = $localItem->CodiceMetodo;
-//            $syncItem["codice_fiscale_c"] = $localItem->CodiceFiscale;
-//            $syncItem["partita_iva_c"] = $localItem->PartitaIVA;
         }
         return $syncItem;
+    }
+
+    /**
+     * @param string $database
+     * @param string $type
+     * @return string
+     * @throws \Exception
+     */
+    protected function getRemoteFieldNameForCodiceMetodo($database, $type) {
+        switch ($database) {
+            case "IMP":
+                switch ($type) {
+                    case "C":
+                        $answer = "metodo_client_code_imp_c";
+                        break;
+                    case "F":
+                        $answer = "metodo_supplier_code_imp_c";
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
+                break;
+            case "MEKIT":
+                switch ($type) {
+                    case "C":
+                        $answer = "metodo_client_code_mekit_c";
+                        break;
+                    case "F":
+                        $answer = "metodo_supplier_code_mekit_c";
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
+                break;
+            default:
+                throw new \Exception("Local item needs to have database IMP|MEKIT!");
+        }
+        return $answer;
     }
 
     /**
@@ -155,22 +195,30 @@ class AccountData {
      */
     protected function loadRemoteItem($item) {
         $itemData = false;
+
+        $orFilter = [];
+        if (!empty($item["PartitaIva"]) && $item["PartitaIva"] != '00000000000') {
+            $orFilter[] = ["partita_iva_c" => $item["PartitaIva"]];
+        }
+        if (!empty($item["CodiceFiscale"])) {
+            $orFilter[] = ["codice_fiscale_c" => $item["CodiceFiscale"]];
+        }
+        $orFilter[] = ["metodo_client_code_imp_c" => $item["CodiceMetodo"]];
+        $orFilter[] = ["metodo_supplier_code_imp_c" => $item["CodiceMetodo"]];
+        $orFilter[] = ["metodo_client_code_mekit_c" => $item["CodiceMetodo"]];
+        $orFilter[] = ["metodo_supplier_code_mekit_c" => $item["CodiceMetodo"]];
+
+
+
         $arguments = [
             "filter" => [
                 [
-                    '$or' => [
-                                 ["partita_iva_c" => $item["PartitaIva"]],
-                                 ["codice_fiscale_c" => $item["CodiceFiscale"]],
-                                 ["metodo_client_code_imp_c" => $item["CodiceMetodo"]],
-                                 ["metodo_supplier_code_imp_c" => $item["CodiceMetodo"]],
-                                 ["metodo_client_code_mekit_c" => $item["CodiceMetodo"]],
-                                 ["metodo_supplier_code_mekit_c" => $item["CodiceMetodo"]],
-                             ],
+                    '$or' => $orFilter,
                 ]
             ],
             "max_num" => 1,
             "offset" => 0,
-            "fields" => "id,metodo_last_update_time_c",
+            "fields" => "id,metodo_last_update_time_c,metodo_client_code_imp_c,metodo_supplier_code_imp_c,metodo_client_code_mekit_c,metodo_supplier_code_mekit_c",
         ];
         $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
         if(isset($result->records) && count($result->records)) {
@@ -207,11 +255,15 @@ class AccountData {
         $statement->execute();
         $index = $statement->fetchAll(\PDO::FETCH_ASSOC);
         foreach($index as &$item) {
+            $item["CodiceMetodo"] = trim($item["CodiceMetodo"]);
             $item["database"] = $database;
         }
         $this->index = $index;
     }
 
+    /**
+     * @param string $msg
+     */
     protected function log($msg) {
         call_user_func($this->logger, $msg);
     }
