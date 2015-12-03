@@ -25,17 +25,28 @@ class SugarCrmRest {
      * @param bool|TRUE  $encodeData
      * @param bool|FALSE $returnHeaders
      * @return \stdClass
+     * @throws SugarCrmRestException
      */
     public function comunicate($urlSuffix, $type, $arguments = array(), $encodeData = TRUE, $returnHeaders = FALSE) {
         $cfg = Configuration::getConfiguration();
         $this->checkAuthToken();
         $url = $cfg["sugarcrm"]["url"] . $urlSuffix;
         $answer = $this->call($url, $this->authToken->access_token, $type, $arguments, $encodeData, $returnHeaders);
+        if ($answer && isset($answer->error)) {
+            $authTokenFilePath = $cfg["global"]["temporary_path"] . '/token.ser';
+            unlink($authTokenFilePath);
+            throw new SugarCrmRestException(
+                strtoupper($answer->error)
+                . (isset($answer->error_message) ? ": " . $answer->error_message : '')
+            );
+        }
         return $answer;
     }
 
 
-
+    /**
+     * @throws SugarCrmRestException
+     */
     protected function checkAuthToken() {
         if(!$this->authToken) {
             $cfg = Configuration::getConfiguration();
@@ -71,7 +82,10 @@ class SugarCrmRest {
                 /** @var \stdClass $token */
                 $token = $this->call($loginUrl, '', 'POST', $arguments);
                 if(isset($token->error)) {
-                    throw new \Exception($token->error_message);
+                    throw new SugarCrmRestException(
+                        strtoupper($token->error)
+                        . (isset($token->error_message) ? ": " . $token->error_message : '')
+                    );
                 }
                 $this->authToken = $token;
                 $token->timestamp = new \DateTime();
