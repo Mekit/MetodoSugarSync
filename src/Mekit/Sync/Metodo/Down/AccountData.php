@@ -41,16 +41,12 @@ class AccountData {
 
     protected function elaborateIndexItems() {
         $i = 0;
-        $maxRun = 10;//999999999;
-        //foreach($this->index as $indexItem) {
+        $maxRun = 999999999;//999999999;
         while($indexItem = array_pop($this->index)) {
             if($i >= $maxRun) {
                 $this->log("Reached hard limit($maxRun).");
                 break;
             }
-//            if($indexItem["Nome1"] != "MEKIT SCS") {
-//                continue;
-//            }
 
             $this->log(
                 "------------------------------------------------------------($i): '" . $indexItem["CodiceMetodo"]

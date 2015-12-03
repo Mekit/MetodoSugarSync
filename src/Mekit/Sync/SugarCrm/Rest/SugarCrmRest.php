@@ -33,8 +33,11 @@ class SugarCrmRest {
         $url = $cfg["sugarcrm"]["url"] . $urlSuffix;
         $answer = $this->call($url, $this->authToken->access_token, $type, $arguments, $encodeData, $returnHeaders);
         if ($answer && isset($answer->error)) {
+            $this->authToken = FALSE;
             $authTokenFilePath = $cfg["global"]["temporary_path"] . '/token.ser';
-            unlink($authTokenFilePath);
+            if (file_exists($authTokenFilePath)) {
+                unlink($authTokenFilePath);
+            }
             throw new SugarCrmRestException(
                 strtoupper($answer->error)
                 . (isset($answer->error_message) ? ": " . $answer->error_message : '')
@@ -45,19 +48,32 @@ class SugarCrmRest {
 
 
     /**
+     * @param \stdClass $token
+     * @return bool
+     */
+    protected function checkIfTokenIsValid($token) {
+        $answer = FALSE;
+        /** @var \DateTime $tokenDate */
+        $tokenDate = $token->timestamp;
+        $tokenExpiryDate = $tokenDate->add(new \DateInterval('PT' . ($token->expires_in - 0) . "S"));
+        $now = new \DateTime();
+        return ($tokenExpiryDate > $now);
+    }
+    /**
      * @throws SugarCrmRestException
      */
     protected function checkAuthToken() {
+        if ($this->authToken && !$this->checkIfTokenIsValid($this->authToken)) {
+            $this->authToken = FALSE;
+        }
+
         if(!$this->authToken) {
             $cfg = Configuration::getConfiguration();
+
             $authTokenFilePath = $cfg["global"]["temporary_path"] . '/token.ser';
             if(file_exists($authTokenFilePath)) {
                 $token = unserialize(file_get_contents($authTokenFilePath));
-                /** @var \DateTime $tokenDate */
-                $tokenDate = $token->timestamp;
-                $tokenExpiryDate = $tokenDate->add(new \DateInterval('PT' . ($token->expires_in - 0) . "S"));
-                $now = new \DateTime();
-                if($tokenExpiryDate > $now) {
+                if ($this->checkIfTokenIsValid($token)) {
                     $this->authToken = $token;
                 } else {
                     unlink($authTokenFilePath);
