@@ -41,15 +41,83 @@ class CacheDb extends SqliteDb {
         return $answer;
     }
 
-    public function saveItem($item) {
+    public function addItem($item) {
+        try {
+            $columns = [
+                "id",
+                "metodo_client_code_imp_c",
+                "metodo_supplier_code_imp_c",
+                "metodo_client_code_mekit_c",
+                "metodo_supplier_code_mekit_c",
+                "partita_iva_c",
+                "codice_fiscale_c",
+                "metodo_last_update_time_c"
+            ];
+            $query = "INSERT INTO " . $this->dataIdentifier . " "
+                     . "(" . implode(",", $columns) . ")"
+                     . " VALUES "
+                     . "(";
+            $columnIndex = 1;
+            $maxColumns = count($columns);
+            foreach ($columns as $column) {
+                $query .= ":" . $column . ($columnIndex < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $query .= ")";
 
+            $stmt = $this->db->prepare($query);
+            foreach ($columns as $column) {
+                if (isset($item->$column)) {
+                    $stmt->bindParam(':' . $column, $item->$column);
+                }
+            }
+            $stmt->execute();
+            return TRUE;
+        } catch(\PDOException $e) {
+            $this->log("cache insert error: " . $e->getMessage());
+            return FALSE;
+        }
+    }
+
+    public function updateItem($item) {
+        try {
+            $columns = [
+                "metodo_client_code_imp_c",
+                "metodo_supplier_code_imp_c",
+                "metodo_client_code_mekit_c",
+                "metodo_supplier_code_mekit_c",
+                "partita_iva_c",
+                "codice_fiscale_c",
+                "metodo_last_update_time_c"
+            ];
+            $query = "UPDATE " . $this->dataIdentifier . " SET ";
+            $columnIndex = 1;
+            $maxColumns = count($columns);
+            foreach ($columns as $column) {
+                $query .= $column . " = :" . $column . ($columnIndex < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $query .= " WHERE id = :id";
+            $stmt = $this->db->prepare($query);
+            foreach ($columns as $column) {
+                if (isset($item->$column)) {
+                    $stmt->bindParam(':' . $column, $item->$column);
+                }
+            }
+            $stmt->bindParam(':id', $item->id);
+            $stmt->execute();
+            return TRUE;
+        } catch(\PDOException $e) {
+            $this->log("cache update error: " . $e->getMessage() . " - " . $query);
+            return FALSE;
+        }
     }
 
 
     /**
      * @param bool|TRUE $forceRecreate
      */
-    protected function setupDatabase($forceRecreate = TRUE) {
+    protected function setupDatabase($forceRecreate = FALSE) {
         if ($forceRecreate) {
             $this->db->exec("DROP TABLE IF EXISTS " . $this->dataIdentifier);
             $this->log("Cache table($this->dataIdentifier) dropped.");
@@ -70,7 +138,7 @@ class CacheDb extends SqliteDb {
                    . ", metodo_supplier_code_mekit_c TEXT"
                    . ", partita_iva_c TEXT"
                    . ", codice_fiscale_c TEXT"
-                   . ", metodo_last_update_time_c INTEGER NOT NULL"
+                   . ", metodo_last_update_time_c TEXT NOT NULL"
                    . ")";
             $this->db->exec($sql);
             $this->db->exec("CREATE UNIQUE INDEX CRMID ON " . $this->dataIdentifier . " (id ASC)");

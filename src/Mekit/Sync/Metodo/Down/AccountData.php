@@ -46,7 +46,7 @@ class AccountData {
 
     protected function elaborateIndexItems() {
         $i = 0;
-        $maxRun = 1;//999999999;
+        $maxRun = 100;//999999999;
         while($indexItem = array_pop($this->index)) {
             if($i >= $maxRun) {
                 $this->log("Reached hard limit($maxRun).");
@@ -66,7 +66,7 @@ class AccountData {
             $savedItem = $this->saveRemoteItem($syncItem);
             $this->log("Saved item: " . json_encode($savedItem));
             //@todo - saved item should be serialized and saved so next time we don't load it from remote
-            $this->cacheSavedItem($savedItem);
+            $this->cacheSavedItem($savedItem, "IMP", $localItem);
             $i++;
         }
     }
@@ -74,10 +74,25 @@ class AccountData {
     /**
      * @param \stdClass|bool $savedItem
      */
-    protected function cacheSavedItem($savedItem) {
+    protected function cacheSavedItem($savedItem, $database = "IMP", $localItem) {
         if ($savedItem) {
             $filter = [];
-            $this->cacheDb->loadItem($filter);
+            if (!empty($savedItem->partita_iva_c) && $savedItem->partita_iva_c != '00000000000') {
+                $filter["partita_iva_c"] = $savedItem->partita_iva_c;
+            }
+            if (!count($filter) && !empty($savedItem->codice_fiscale_c)) {
+                $filter["codice_fiscale_c"] = $savedItem->codice_fiscale_c;
+            }
+            if (!count($filter)) {
+                $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($database, $localItem->Tipologia);
+                $filter[$remoteFieldNameForCodiceMetodo] = $localItem->CodiceMetodo;
+            }
+            if (!$this->cacheDb->loadItem($filter)) {
+                $this->cacheDb->addItem($savedItem);
+            }
+            else {
+                $this->cacheDb->updateItem($savedItem);
+            }
         }
     }
 
