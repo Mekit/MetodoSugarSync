@@ -9,6 +9,7 @@ namespace Mekit\Sync\Metodo\Down;
 
 
 use Mekit\Console\Configuration;
+use Mekit\DbCache\CacheDb;
 use Mekit\Sync\SugarCrm\Rest\SugarCrmRest;
 use Mekit\Sync\SugarCrm\Rest\SugarCrmRestException;
 
@@ -19,6 +20,11 @@ class AccountData {
     /** @var SugarCrmRest */
     protected $sugarCrmRest;
 
+    /** @var  CacheDb */
+    protected $cacheDb;
+
+    protected $dataIdentifier = 'Account';
+
     /** @var array  */
     protected $index = [];
 
@@ -27,11 +33,10 @@ class AccountData {
      */
     public function __construct($logger) {
         $this->logger = $logger;
+        $this->cacheDb = new CacheDb($this->dataIdentifier, $logger);
         $this->sugarCrmRest = new SugarCrmRest();
-        $this->createCacheDir();
     }
 
-    //$query = "SELECT TOP 10 * FROM [SogCRM_TesteDocumenti] WHERE [TipoDoc] = 'DDT'";
     public function execute() {
         $this->log("getting account data from Metodo...");
         $this->loadIndex();
@@ -41,7 +46,7 @@ class AccountData {
 
     protected function elaborateIndexItems() {
         $i = 0;
-        $maxRun = 999999999;//999999999;
+        $maxRun = 1;//999999999;
         while($indexItem = array_pop($this->index)) {
             if($i >= $maxRun) {
                 $this->log("Reached hard limit($maxRun).");
@@ -53,38 +58,26 @@ class AccountData {
                 . "' - " . $indexItem["Nome1"]
             );
             $localItem = $this->loadLocalItem($indexItem);
-            //$this->log("Local item: " . json_encode($localItem));
+            $this->log("Local item: " . json_encode($localItem));
             $remoteItem = $this->loadRemoteItem($indexItem);
-            //$this->log("Remote item: " . json_encode($remoteItem));
+            $this->log("Remote item: " . json_encode($remoteItem));
             $syncItem = $this->createSyncItem($localItem, $remoteItem);
-            //$this->log("Sync item: " . json_encode($syncItem));
+            $this->log("Sync item: " . json_encode($syncItem));
             $savedItem = $this->saveRemoteItem($syncItem);
             $this->log("Saved item: " . json_encode($savedItem));
             //@todo - saved item should be serialized and saved so next time we don't load it from remote
-            $this->cacheSavedItem(NULL, $savedItem);
+            $this->cacheSavedItem($savedItem);
             $i++;
         }
     }
 
     /**
-     * @param string         $codiceMetodo
      * @param \stdClass|bool $savedItem
      */
-    protected function cacheSavedItem($codiceMetodo, $savedItem) {
+    protected function cacheSavedItem($savedItem) {
         if ($savedItem) {
-            $codeFieldNames = [
-                "metodo_client_code_imp_c",
-                "metodo_supplier_code_imp_c",
-                "metodo_client_code_mekit_c",
-                "metodo_supplier_code_mekit_c"
-            ];
-            foreach ($codeFieldNames as $codeFieldName) {
-                if (isset($savedItem->$codeFieldName) && !empty($savedItem->$codeFieldName)) {
-                    $cacheFileName = $this->getCachedFilePath($savedItem->$codeFieldName);
-                    //$this->log("creating cache file: " . $cacheFileName);
-                    file_put_contents($cacheFileName, serialize($savedItem));
-                }
-            }
+            $filter = [];
+            $this->cacheDb->loadItem($filter);
         }
     }
 
@@ -136,6 +129,7 @@ class AccountData {
                     $result = $this->sugarCrmRest->comunicate('/Accounts/' . $id, 'PUT', $syncItem);
                 } catch(SugarCrmRestException $e) {
                     //go ahead with false silently
+                    $this->log("ERROR SAVING!!! - " . $e->getMessage());
                 }
             }
             else {
@@ -260,42 +254,50 @@ class AccountData {
      */
     protected function loadRemoteItem($item) {
         $itemData = false;
-
+        /*
         $cacheFileName = $this->getCachedFilePath($item["CodiceMetodo"]);
         if (file_exists($cacheFileName)) {
             $itemData = unserialize(file_get_contents($cacheFileName));
         }
+        */
 
         if (!$itemData) {
-            $orFilter = [];
+            $filter = [];
             if (!empty($item["PartitaIva"]) && $item["PartitaIva"] != '00000000000') {
-                $orFilter[] = ["partita_iva_c" => $item["PartitaIva"]];
+                $filter[] = ["partita_iva_c" => $item["PartitaIva"]];
             }
-            if (!empty($item["CodiceFiscale"])) {
-                $orFilter[] = ["codice_fiscale_c" => $item["CodiceFiscale"]];
+            if (!count($filter) && !empty($item["CodiceFiscale"])) {
+                $filter[] = ["codice_fiscale_c" => $item["CodiceFiscale"]];
             }
-            $orFilter[] = ["metodo_client_code_imp_c" => $item["CodiceMetodo"]];
-            $orFilter[] = ["metodo_supplier_code_imp_c" => $item["CodiceMetodo"]];
-            $orFilter[] = ["metodo_client_code_mekit_c" => $item["CodiceMetodo"]];
-            $orFilter[] = ["metodo_supplier_code_mekit_c" => $item["CodiceMetodo"]];
+            if (!count($filter)) {
+                $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($item["database"], $item["Tipologia"]);
+                $filter[] = [$remoteFieldNameForCodiceMetodo => $item["CodiceMetodo"]];
+            }
 
-            $arguments = [
-                "filter" => [
-                    [
-                        '$or' => $orFilter,
+            if (count($filter)) {
+                $arguments = [
+                    "filter" => $filter,
+                    "max_num" => 1,
+                    "offset" => 0,
+                    "fields" => implode(
+                        ",", [
+                        "id",
+                        "metodo_last_update_time_c",
+                        "metodo_client_code_imp_c",
+                        "metodo_supplier_code_imp_c",
+                        "metodo_client_code_mekit_c",
+                        "metodo_supplier_code_mekit_c"
                     ]
-                ],
-                "max_num" => 1,
-                "offset" => 0,
-                "fields" => "id,metodo_last_update_time_c,metodo_client_code_imp_c,metodo_supplier_code_imp_c,metodo_client_code_mekit_c,metodo_supplier_code_mekit_c",
-            ];
-            try {
-                $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
-                if (isset($result->records) && count($result->records)) {
-                    $itemData = $result->records[0];
+                    ),
+                ];
+                try {
+                    $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
+                    if (isset($result->records) && count($result->records)) {
+                        $itemData = $result->records[0];
+                    }
+                } catch(SugarCrmRestException $e) {
+                    //go ahead silently with false
                 }
-            } catch(SugarCrmRestException $e) {
-                //go ahead silently with false
             }
         }
 
@@ -303,19 +305,12 @@ class AccountData {
     }
 
     /**
-     * For now $item is sufficient for local item
+     * For now $item is sufficient for local item - if not here you can execute additional loads
      *
      * @param array $item
      * @return \stdClass
      */
     protected function loadLocalItem($item) {
-        /*
-        $db = Configuration::getDatabaseConnection("SERVER2K8");
-        $query = "SELECT * FROM [IMP].[dbo].[SogCRM_AnagraficaCF] WHERE [CodiceMetodo] = '" . $item["CodiceMetodo"] . "'";
-        $statement = $db->prepare($query);
-        $statement->execute();
-        $itemData = $statement->fetch(\PDO::FETCH_OBJ);
-        */
         $itemData = (object)$item;
         return($itemData);
     }
