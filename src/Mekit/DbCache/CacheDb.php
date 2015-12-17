@@ -1,10 +1,10 @@
 <?php
 namespace Mekit\DbCache;
 
-class CacheDb extends SqliteDb {
-    /** @var  \PDOStatement */
-    private $filesWalker;
+use Mekit\Console\Configuration;
 
+
+class CacheDb extends SqliteDb {
     /**
      * @param string $dataIdentifier
      * @param callable $logger
@@ -20,39 +20,37 @@ class CacheDb extends SqliteDb {
      */
     public function loadItem($filter) {
         $answer = FALSE;
-        if (count($filter)) {
-            $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";//file_path_md5 = :file_path_md5";
-            $filterIndex = 1;
-            $maxFilters = count($filter);
-            foreach (array_keys($filter) as $filterParam) {
-                $query .= " " . $filterParam . ' = :' . $filterParam . ($filterIndex < $maxFilters ? " AND" : "");
-                $filterIndex++;
+        try {
+            if (count($filter)) {
+                $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";
+                $filterIndex = 1;
+                $maxFilters = count($filter);
+                foreach (array_keys($filter) as $filterParam) {
+                    $query .= " " . $filterParam . ' = :' . $filterParam . ($filterIndex < $maxFilters ? " AND" : "");
+                    $filterIndex++;
+                }
+                $stmt = $this->db->prepare($query);
+                foreach ($filter as $filterParam => $filterValue) {
+                    $stmt->bindParam(':' . $filterParam, $filterValue, \PDO::PARAM_STR);
+                }
+                if ($stmt->execute()) {
+                    $answer = $stmt->fetch(\PDO::FETCH_OBJ);
+                }
             }
-            $stmt = $this->db->prepare($query);
-            foreach ($filter as $filterParam => $filterValue) {
-                $stmt->bindParam(':' . $filterParam, $filterValue, \PDO::PARAM_STR);
-            }
-            if ($stmt->execute()) {
-                $answer = $stmt->fetch(\PDO::FETCH_ASSOC);
-                $this->log("loaded cache item: " . json_encode($answer));
-            }
+        } catch(\PDOException $e) {
+            $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
         }
-
         return $answer;
     }
 
+    /**
+     * @param $item
+     * @return bool
+     */
     public function addItem($item) {
+        $answer = FALSE;
         try {
-            $columns = [
-                "id",
-                "metodo_client_code_imp_c",
-                "metodo_supplier_code_imp_c",
-                "metodo_client_code_mekit_c",
-                "metodo_supplier_code_mekit_c",
-                "partita_iva_c",
-                "codice_fiscale_c",
-                "metodo_last_update_time_c"
-            ];
+            $columns = array_keys(get_object_vars($item));
             $query = "INSERT INTO " . $this->dataIdentifier . " "
                      . "(" . implode(",", $columns) . ")"
                      . " VALUES "
@@ -72,24 +70,24 @@ class CacheDb extends SqliteDb {
                 }
             }
             $stmt->execute();
-            return TRUE;
+            $answer = TRUE;
         } catch(\PDOException $e) {
-            $this->log("cache insert error: " . $e->getMessage());
-            return FALSE;
+            $this->log(__CLASS__ . " - add item error: " . $e->getMessage());
         }
+        return $answer;
     }
 
+    /**
+     * @param $item
+     * @return bool
+     */
     public function updateItem($item) {
+        $answer = FALSE;
         try {
-            $columns = [
-                "metodo_client_code_imp_c",
-                "metodo_supplier_code_imp_c",
-                "metodo_client_code_mekit_c",
-                "metodo_supplier_code_mekit_c",
-                "partita_iva_c",
-                "codice_fiscale_c",
-                "metodo_last_update_time_c"
-            ];
+            $itemId = $item->id;
+            unset($item->id);
+            $columns = array_keys(get_object_vars($item));
+
             $query = "UPDATE " . $this->dataIdentifier . " SET ";
             $columnIndex = 1;
             $maxColumns = count($columns);
@@ -104,51 +102,23 @@ class CacheDb extends SqliteDb {
                     $stmt->bindParam(':' . $column, $item->$column);
                 }
             }
-            $stmt->bindParam(':id', $item->id);
-            $stmt->execute();
-            return TRUE;
+            $stmt->bindParam(':id', $itemId);
+            $answer = $stmt->execute();
+            if (!$answer) {
+                $this->log("NOT UPDATED!");
+            }
         } catch(\PDOException $e) {
-            $this->log("cache update error: " . $e->getMessage() . " - " . $query);
-            return FALSE;
+            $this->log(__CLASS__ . " - update item error: " . $e->getMessage());
         }
+        return $answer;
     }
 
 
     /**
-     * @param bool|TRUE $forceRecreate
+     * @throws \Exception
      */
-    protected function setupDatabase($forceRecreate = FALSE) {
-        if ($forceRecreate) {
-            $this->db->exec("DROP TABLE IF EXISTS " . $this->dataIdentifier);
-            $this->log("Cache table($this->dataIdentifier) dropped.");
-        }
-        $statement = $this->db->prepare(
-            "SELECT COUNT(*) AS HASTABLE FROM sqlite_master WHERE type='table' AND name='" . $this->dataIdentifier . "'"
-        );
-        $statement->execute();
-        $tabletest = $statement->fetchObject();
-        $hasTable = $tabletest->HASTABLE == 1;
-        if (!$hasTable) {
-            $this->log("creating cache table($this->dataIdentifier)...");
-            $sql = "CREATE TABLE " . $this->dataIdentifier . " ("
-                   . "id TEXT NOT NULL"
-                   . ", metodo_client_code_imp_c TEXT"
-                   . ", metodo_supplier_code_imp_c TEXT"
-                   . ", metodo_client_code_mekit_c TEXT"
-                   . ", metodo_supplier_code_mekit_c TEXT"
-                   . ", partita_iva_c TEXT"
-                   . ", codice_fiscale_c TEXT"
-                   . ", metodo_last_update_time_c TEXT NOT NULL"
-                   . ")";
-            $this->db->exec($sql);
-            $this->db->exec("CREATE UNIQUE INDEX CRMID ON " . $this->dataIdentifier . " (id ASC)");
-            $this->db->exec("CREATE INDEX IMP_C ON " . $this->dataIdentifier . " (metodo_client_code_imp_c ASC)");
-            $this->db->exec("CREATE INDEX IMP_F ON " . $this->dataIdentifier . " (metodo_supplier_code_imp_c ASC)");
-            $this->db->exec("CREATE INDEX MKT_C ON " . $this->dataIdentifier . " (metodo_client_code_mekit_c ASC)");
-            $this->db->exec("CREATE INDEX MKT_F ON " . $this->dataIdentifier . " (metodo_supplier_code_mekit_c ASC)");
-            $this->db->exec("CREATE INDEX P_IVA ON " . $this->dataIdentifier . " (partita_iva_c ASC)");
-            $this->db->exec("CREATE INDEX CFIS ON " . $this->dataIdentifier . " (codice_fiscale_c ASC)");
-        }
+    protected function setupDatabase() {
+        throw new \Exception(__CLASS__ . ": Method setupDatabase must be implemented in extending class!");
     }
 }
 
