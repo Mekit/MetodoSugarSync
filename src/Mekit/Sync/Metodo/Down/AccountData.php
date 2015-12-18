@@ -46,7 +46,6 @@ class AccountData {
     protected function updateLocalCache() {
         $this->log("updating local cache...");
         foreach (["IMP", "MEKIT"] as $database) {
-            $this->log("DB: $database");
             while ($localItem = $this->getNextLocalItem($database)) {
                 $this->saveLocalItemInCache($localItem);
             }
@@ -54,78 +53,223 @@ class AccountData {
     }
 
 
+    /**
+     * @param \stdClass $localItem
+     * @throws \Exception
+     */
     protected function saveLocalItemInCache($localItem) {
-        $foundBy = "CODE";
+        /** @var string $operation */
+        $operation = FALSE;
+        /** @var \stdClass $cachedItem */
+        $cachedItem = FALSE;
+        /** @var \stdClass $cacheUpdateItem */
+        $cacheUpdateItem = FALSE;
+        /** @var string $identifiedBy */
+        $identifiedBy = FALSE;
+        /** @var string $remoteFieldNameForCodiceMetodo */
         $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($localItem->database, $localItem->Tipologia);
-        $remoteFieldNameForClienteDiFatturazione = $this->getRemoteFieldNameForClienteDiFatturazione($localItem->database);
-        $filter = [
-            $remoteFieldNameForCodiceMetodo => $localItem->CodiceMetodo
-        ];
-        $cachedItem = $this->cacheDb->loadItem($filter);
-        if (!$cachedItem && !empty($localItem->PartitaIva) && $localItem->PartitaIva != '00000000000') {
-            $filter = [
-                'partita_iva_c' => $localItem->PartitaIva
-            ];
-            $cachedItem = $this->cacheDb->loadItem($filter);
-            $foundBy = "PIVA";
-        }
-        if (!$cachedItem && !empty($localItem->CodiceFiscale)) {
-            $filter = [
-                'codice_fiscale_c' => $localItem->CodiceFiscale
-            ];
-            $cachedItem = $this->cacheDb->loadItem($filter);
-            $foundBy = "CF";
-        }
+        /** @var string $remoteFieldNameForClienteDiFatturazione */
+        $remoteFieldNameForClienteDiFatturazione = $this->getRemoteFieldNameForClienteDiFatturazione($localItem->database, $localItem->Tipologia);
+        /** @var array $warnings */
+        $warnings = [];
 
-        $operation = $cachedItem ? "update" : "insert";
-        if ($operation == "insert") {
-            $foundBy = "NOPE";
-            $cacheUpdateItem = new \stdClass();
-            $cacheUpdateItem->id = md5($localItem->CodiceMetodo . "-" . microtime(TRUE));
-            $localDataDiModifica = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
-            $cacheUpdateItem->metodo_last_update_time_c = $localDataDiModifica->format("c");
-        }
-        else {
-            $cacheUpdateItem = clone($cachedItem);
-            $localDataDiModifica = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
-            $cachedDataDiModifica = new \DateTime($cachedItem->metodo_last_update_time_c);
-            if ($localDataDiModifica > $cachedDataDiModifica) {
-                $cacheUpdateItem->metodo_last_update_time_c = $localDataDiModifica->format("c");
+        //control by: PartitaIva
+        if (!empty($localItem->PartitaIva) && $localItem->PartitaIva != '00000000000') {
+            $filter = [
+                'partita_iva_c' => $localItem->PartitaIva,
+            ];
+            $candidates = $this->cacheDb->loadItems($filter);
+            if ($candidates) {
+                foreach ($candidates as $candidate) {
+                    if ($localItem->CodiceMetodo == $candidate->$remoteFieldNameForCodiceMetodo) {
+                        $cachedItem = $candidate;
+                        $operation = "update";
+                        $identifiedBy = "PIVA + CM";
+                        break;
+                    }
+                }
+
+                if (!$operation) {
+                    if ($localItem->CodiceMetodo == $localItem->ClienteDiFatturazione) {
+                        foreach ($candidates as $candidate) {
+                            if ($candidate->$remoteFieldNameForCodiceMetodo
+                                == $candidate->$remoteFieldNameForClienteDiFatturazione
+                            ) {
+                                $cachedItem = $candidate;
+                                $operation = "update";
+                                $identifiedBy = "PIVA + (CM===CF)";
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!$operation) {
+                    //$operation = "insert";
+                    $identifiedBy = "PIVA";
+                }
             }
         }
 
-        $cacheUpdateItem->$remoteFieldNameForCodiceMetodo = $localItem->CodiceMetodo;
+        //control by: CodiceFiscale
+        if (!$operation && !empty($localItem->CodiceFiscale)) {
+            $filter = [
+                'codice_fiscale_c' => $localItem->CodiceFiscale,
+            ];
+            $candidates = $this->cacheDb->loadItems($filter);
+            if ($candidates) {
+                foreach ($candidates as $candidate) {
+                    if ($localItem->CodiceMetodo == $candidate->$remoteFieldNameForCodiceMetodo) {
+                        $cachedItem = $candidate;
+                        $operation = "update";
+                        $identifiedBy = "CODFISC + CM";
+                        break;
+                    }
+                }
 
-        if (!empty($localItem->PartitaIva)) {
+                if (!$operation) {
+                    if ($localItem->CodiceMetodo == $localItem->ClienteDiFatturazione) {
+                        foreach ($candidates as $candidate) {
+                            if ($candidate->$remoteFieldNameForCodiceMetodo
+                                == $candidate->$remoteFieldNameForClienteDiFatturazione
+                            ) {
+                                $cachedItem = $candidate;
+                                $operation = "update";
+                                $identifiedBy = "CODFISC + (CM===CF)";
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!$operation) {
+                    //$operation = "insert";
+                    $identifiedBy = "CODFISC";
+                }
+            }
+        }
+
+        //control by: Codice Metodo
+        if (!$operation) {
+            $filter = [
+                $remoteFieldNameForCodiceMetodo => $localItem->CodiceMetodo
+            ];
+            $candidates = $this->cacheDb->loadItems($filter);
+            if (count($candidates) > 1) {
+                throw new \Exception(
+                    "Duplicati per codice metodo(" . $localItem->CodiceMetodo . ") in field_ "
+                    . $remoteFieldNameForCodiceMetodo
+                );
+            }
+            if ($candidates) {
+                $cachedItem = $candidates[0];
+                $operation = "update";
+                $identifiedBy = "CM";
+            }
+            else {
+                $operation = "insert";
+                $identifiedBy = "NOPE";
+            }
+        }
+
+        //create item for: update
+        if ($operation == "update") {
+            $cacheUpdateItem = clone($cachedItem);
+
+            //CHECK FOR BAD DUPLICATES IN METODO
+            /*
+             * Se identifichiamo un $cachedItem per partitaIva o Codice Fiscale ma il codice metodo attuale($localItem->CodiceMetodo)
+             * è diverso dal codice metodo che si trova sul $cachedItem, vuol dire che in Metodo abbiamo più di un anagrafica
+             * registrata con la stessa PI/CF
+             * Quindi in questo caso invalidiamo il $cachedItem e creiamo nuovo
+             */
+            if (
+                (!empty($cachedItem->$remoteFieldNameForCodiceMetodo)
+                 && $localItem->CodiceMetodo != $cachedItem->$remoteFieldNameForCodiceMetodo)
+                || (!empty($cachedItem->$remoteFieldNameForClienteDiFatturazione)
+                    && $localItem->ClienteDiFatturazione != $cachedItem->$remoteFieldNameForClienteDiFatturazione)
+            ) {
+                $warnings[] = "-----------------------------------------------------------------------------------------";
+                $warnings[] = "RESOLVING CONFLICT[" . $localItem->database . "]($remoteFieldNameForCodiceMetodo): "
+                              . $localItem->CodiceMetodo
+                              . " -> "
+                              . $cachedItem->$remoteFieldNameForCodiceMetodo;
+                $warnings[] = $localItem->CodiceMetodo . " = " . $localItem->RagioneSociale;
+                $warnings[] = $cachedItem->$remoteFieldNameForCodiceMetodo . " = " . $cachedItem->name;
+                $cachedItem = FALSE;
+                $operation = "insert";
+                $identifiedBy = "CONFLICT";
+            }
+            else {
+                $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+                $cachedDataDiModifica = new \DateTime($cachedItem->metodo_last_update_time_c);
+                if ($metodoLastUpdateTime > $cachedDataDiModifica) {
+                    $cacheUpdateItem->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+                }
+            }
+        }
+
+        //create item for: insert
+        if ($operation == "insert") {
+            $cacheUpdateItem = new \stdClass();
+            $cacheUpdateItem->id = md5($localItem->CodiceMetodo . "-" . microtime(TRUE));
+
+            $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+            $cacheUpdateItem->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+
+            $crmLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+            $cacheUpdateItem->crm_last_update_time_c = $crmLastUpdateTime->format("c");
+        }
+
+
+        //add shared data on item (ONLY CODES)
+        $cacheUpdateItem->$remoteFieldNameForCodiceMetodo = $localItem->CodiceMetodo;
+        $cacheUpdateItem->$remoteFieldNameForClienteDiFatturazione = $localItem->ClienteDiFatturazione;
+
+        if (!empty($localItem->PartitaIva) && $localItem->PartitaIva != "00000000000") {
             $cacheUpdateItem->partita_iva_c = $localItem->PartitaIva;
         }
         if (!empty($localItem->CodiceFiscale)) {
             $cacheUpdateItem->codice_fiscale_c = $localItem->CodiceFiscale;
         }
-        if (!empty($localItem->ClienteDiFatturazione)) {
-            $cacheUpdateItem->cliente_di_fatturazione_c = $localItem->ClienteDiFatturazione;
-        }
 
-
+        //DECIDE OPERATION
         $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
+        //add other data on item
+        $cacheUpdateItem->crm_export_flag_c = $localItem->CrmExportFlag;
+        $cacheUpdateItem->name = $localItem->RagioneSociale;
 
-        if ($operation !== "skip" && $cachedItem->partita_iva_c == "06784280015") {
+
+        if ($operation == "update") {
+            $this->log("-----------------------------------------------------------------------------------------");
             $this->log(
-                "-----------------------------------------------------------------------------------------FB: "
-                . $foundBy
+                "[" . $localItem->database . "][$operation][$identifiedBy]-"
+                . "[" . $localItem->CodiceMetodo . "]"
+                . "[" . $localItem->ClienteDiFatturazione . "]"
+                . " " . $localItem->RagioneSociale . ""
             );
-            $this->log("caching item([op:$operation]): " . $localItem->CodiceMetodo);
-            $this->log("CACHED: " . json_encode($cachedItem));
-            $this->log("UPDATE: " . json_encode($cacheUpdateItem));
+            //$this->log("CACHED: " . json_encode($cachedItem));
+            //$this->log("UPDATE: " . json_encode($cacheUpdateItem));
+            $this->log("-----------------------------------------------------------------------------------------");
+        }
+        if (!empty($warnings)) {
+            foreach ($warnings as $warning) {
+                $this->log("WARNING: " . $warning);
+            }
         }
 
-
-        if ($operation == "insert") {
-            $this->cacheDb->addItem($cacheUpdateItem);
-        }
-        else if ($operation == "update") {
-            $this->cacheDb->updateItem($cacheUpdateItem);
+        switch ($operation) {
+            case "insert":
+                $this->cacheDb->addItem($cacheUpdateItem);
+                break;
+            case "update":
+                $this->cacheDb->updateItem($cacheUpdateItem);
+                break;
+            case "skip":
+                break;
+            default:
+                throw new \Exception("Operation($operation) is not implemented!");
         }
     }
 
@@ -144,9 +288,12 @@ class AccountData {
                 ACF.DSCCONTO1 AS Nome1,
                 ACF.DSCCONTO2 AS Nome2,
                 ACF.DATAMODIFICA AS DataDiModifica,
-                ACFR.CODCONTOFATT AS ClienteDiFatturazione
+                ACFR.CODCONTOFATT AS ClienteDiFatturazione,
+                EXT.SOGCRM_Esportabile AS CrmExportFlag
                 FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
-                INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO
+                INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
+                INNER JOIN [$database].dbo.EXTRACLIENTI AS EXT ON ACF.CODCONTO = EXT.CODCONTO
+                ORDER BY ACFR.CODCONTOFATT ASC, ACF.CODCONTO ASC;
                 ";
 
             $this->localItemStatement = $db->prepare($sql);
@@ -156,6 +303,7 @@ class AccountData {
         if ($item) {
             $item->CodiceMetodo = trim($item->CodiceMetodo);
             $item->database = $database;
+            $item->RagioneSociale = $item->Nome1 . (!empty($item->Nome2) ? ' - ' . $item->Nome2 : '');
         }
         else {
             $this->localItemStatement = NULL;
@@ -168,13 +316,31 @@ class AccountData {
      * @return string
      * @throws \Exception
      */
-    protected function getRemoteFieldNameForClienteDiFatturazione($database) {
+    protected function getRemoteFieldNameForClienteDiFatturazione($database, $type) {
         switch ($database) {
             case "IMP":
-                $answer = "metodo_invoice_client_code_imp_c";
+                switch ($type) {
+                    case "C":
+                        $answer = "metodo_invoice_client_code_imp_c";
+                        break;
+                    case "F":
+                        $answer = "metodo_invoice_supplier_code_imp_c";
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
                 break;
             case "MEKIT":
-                $answer = "metodo_invoice_client_code_mekit_c";
+                switch ($type) {
+                    case "C":
+                        $answer = "metodo_invoice_client_code_mekit_c";
+                        break;
+                    case "F":
+                        $answer = "metodo_invoice_supplier_code_mekit_c";
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
                 break;
             default:
                 throw new \Exception("Local item needs to have database IMP|MEKIT!");

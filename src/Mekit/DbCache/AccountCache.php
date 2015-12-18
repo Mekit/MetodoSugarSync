@@ -42,20 +42,30 @@ class AccountCache extends CacheDb {
                    . ", metodo_client_code_mekit_c TEXT"
                    . ", metodo_supplier_code_mekit_c TEXT"
                    . ", metodo_invoice_client_code_imp_c TEXT" /* Cliente di Fatturazione IMP */
+                   . ", metodo_invoice_supplier_code_imp_c TEXT" /* Fornitore di Fatturazione IMP */
                    . ", metodo_invoice_client_code_mekit_c TEXT" /* Cliente di Fatturazione MEKIT */
+                   . ", metodo_invoice_supplier_code_mekit_c TEXT" /* Fornitore di Fatturazione MEKIT */
                    . ", partita_iva_c TEXT"
                    . ", codice_fiscale_c TEXT"
+                   . ", crm_export_flag_c TEXT"
+                   . ", name TEXT"
                    . ", metodo_last_update_time_c TEXT NOT NULL"
+                   . ", crm_last_update_time_c TEXT NOT NULL"
                    . ")";
             $this->db->exec($sql);
             $this->db->exec("CREATE UNIQUE INDEX ID ON " . $this->dataIdentifier . " (id ASC)");
-            $this->db->exec("CREATE INDEX CRMID ON " . $this->dataIdentifier . " (crm_id ASC)");
+//            $this->db->exec("CREATE INDEX CRMID ON " . $this->dataIdentifier . " (crm_id ASC)");
             $this->db->exec("CREATE INDEX IMP_C ON " . $this->dataIdentifier . " (metodo_client_code_imp_c ASC)");
-            $this->db->exec("CREATE INDEX IMP_F ON " . $this->dataIdentifier . " (metodo_supplier_code_imp_c ASC)");
+            $this->db->exec("CREATE INDEX IMP_S ON " . $this->dataIdentifier . " (metodo_supplier_code_imp_c ASC)");
             $this->db->exec("CREATE INDEX MKT_C ON " . $this->dataIdentifier . " (metodo_client_code_mekit_c ASC)");
-            $this->db->exec("CREATE INDEX MKT_F ON " . $this->dataIdentifier . " (metodo_supplier_code_mekit_c ASC)");
+            $this->db->exec("CREATE INDEX MKT_S ON " . $this->dataIdentifier . " (metodo_supplier_code_mekit_c ASC)");
+//            $this->db->exec("CREATE INDEX IMP_ICC ON " . $this->dataIdentifier . " (metodo_invoice_client_code_imp_c ASC)");
+//            $this->db->exec("CREATE INDEX IMP_ISC ON " . $this->dataIdentifier . " (metodo_invoice_supplier_code_imp_c ASC)");
+//            $this->db->exec("CREATE INDEX MKT_ICC ON " . $this->dataIdentifier . " (metodo_invoice_client_code_mekit_c ASC)");
+//            $this->db->exec("CREATE INDEX MKT_ISC ON " . $this->dataIdentifier . " (metodo_invoice_supplier_code_mekit_c ASC)");
             $this->db->exec("CREATE INDEX P_IVA ON " . $this->dataIdentifier . " (partita_iva_c ASC)");
             $this->db->exec("CREATE INDEX CFIS ON " . $this->dataIdentifier . " (codice_fiscale_c ASC)");
+//            $this->db->exec("CREATE INDEX CRMFLAG ON " . $this->dataIdentifier . " (crm_export_flag_c ASC)");
         }
     }
 }

@@ -92,7 +92,7 @@ class AccountDataOld {
                 $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($database, $localItem->Tipologia);
                 $filter[$remoteFieldNameForCodiceMetodo] = $localItem->CodiceMetodo;
             }
-            if (!$this->cacheDb->loadItem($filter)) {
+            if (!$this->cacheDb->loadItems($filter)) {
                 $this->cacheDb->addItem($savedItem);
             }
             else {
@@ -247,7 +247,7 @@ class AccountDataOld {
         $filter = [];
         $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($localItem->database, $localItem->Tipologia);
         $filter[$remoteFieldNameForCodiceMetodo] = $localItem->CodiceMetodo;
-        return $this->cacheDb->loadItem($filter);
+        return $this->cacheDb->loadItems($filter);
     }
 
     /**
