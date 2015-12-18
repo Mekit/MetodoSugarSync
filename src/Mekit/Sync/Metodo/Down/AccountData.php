@@ -45,7 +45,7 @@ class AccountData {
 
     protected function updateLocalCache() {
         $this->log("updating local cache...");
-        foreach (["IMP", "MEKIT"] as $database) {
+        foreach (["MEKIT", "IMP"] as $database) {
             while ($localItem = $this->getNextLocalItem($database)) {
                 $this->saveLocalItemInCache($localItem);
             }
@@ -237,7 +237,11 @@ class AccountData {
         $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
         //add other data on item
+
+        //set it to "0"
         $cacheUpdateItem->crm_export_flag_c = $localItem->CrmExportFlag;
+
+
         $cacheUpdateItem->name = $localItem->RagioneSociale;
 
 
@@ -321,10 +325,10 @@ class AccountData {
             case "IMP":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_invoice_client_code_imp_c";
+                        $answer = "metodo_inv_cli_imp_c";
                         break;
                     case "F":
-                        $answer = "metodo_invoice_supplier_code_imp_c";
+                        $answer = "metodo_inv_sup_imp_c";
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -333,10 +337,10 @@ class AccountData {
             case "MEKIT":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_invoice_client_code_mekit_c";
+                        $answer = "metodo_inv_cli_mekit_c";
                         break;
                     case "F":
-                        $answer = "metodo_invoice_supplier_code_mekit_c";
+                        $answer = "metodo_inv_sup_mekit_c";
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
