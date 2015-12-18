@@ -5,6 +5,10 @@ use Mekit\Console\Configuration;
 
 
 class CacheDb extends SqliteDb {
+    /** @var \PDOStatement */
+    private $itemWalker = NULL;
+
+
     /**
      * @param string $dataIdentifier
      * @param callable $logger
@@ -12,6 +16,25 @@ class CacheDb extends SqliteDb {
     public function __construct($dataIdentifier, $logger) {
         parent::__construct($dataIdentifier, $logger);
         $this->setupDatabase();
+    }
+
+    public function resetItemWalker() {
+        $this->itemWalker = NULL;
+    }
+
+    public function getNextItem() {
+        $answer = FALSE;
+        if (!$this->itemWalker) {
+            $query = "SELECT * FROM " . $this->dataIdentifier;
+            $this->itemWalker = $this->db->prepare($query);
+            $this->itemWalker->execute();
+        }
+        try {
+            $answer = $this->itemWalker->fetch(\PDO::FETCH_OBJ);
+        } catch(\PDOException $e) {
+            $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
+        }
+        return $answer;
     }
 
     /**

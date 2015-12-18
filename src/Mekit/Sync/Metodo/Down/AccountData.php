@@ -50,6 +50,75 @@ class AccountData {
                 $this->saveLocalItemInCache($localItem);
             }
         }
+        $this->log("updating remote...");
+        $this->cacheDb->resetItemWalker();
+        while ($cacheItem = $this->cacheDb->getNextItem()) {
+            $remoteItem = $this->saveRemoteItem($cacheItem);
+            $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+        }
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @param \stdClass $remoteItem
+     */
+    protected function storeCrmIdForCachedItem($cacheItem, $remoteItem) {
+        if ($remoteItem) {
+            $cacheUpdateItem = new \stdClass();
+            $cacheUpdateItem->id = $cacheItem->id;
+            if (empty($cacheItem->crm_id)) {
+                $cacheUpdateItem->crm_id = $remoteItem->id;
+            }
+            $now = new \DateTime();
+            $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
+            $this->cacheDb->updateItem($cacheUpdateItem);
+        }
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @return \stdClass|bool
+     */
+    protected function saveRemoteItem($cacheItem) {
+        $result = FALSE;
+
+        $metodoLastUpdate = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->metodo_last_update_time_c);
+        $crmLastUpdate = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->crm_last_update_time_c);
+
+        if ($metodoLastUpdate > $crmLastUpdate) {
+            $this->log("-----------------------------------------------------------------------------------------");
+
+            $syncItem = clone($cacheItem);
+
+            if (!empty($syncItem->crm_id)) {
+                //@todo: check if 'crm_export_flag_c' is 0
+                $this->log("updating...: " . json_encode($syncItem));
+                $crmid = $syncItem->crm_id;
+                unset($syncItem->crm_id);
+                unset($syncItem->id);
+                try {
+                    $result = $this->sugarCrmRest->comunicate('/Accounts/' . $crmid, 'PUT', $syncItem);
+                } catch(SugarCrmRestException $e) {
+                    //go ahead with false silently
+                    $this->log("ERROR SAVING!!! - " . $e->getMessage());
+                }
+            }
+            else {
+                //CREATE
+                $this->log("creating...: " . json_encode($syncItem));
+                unset($syncItem->crm_id);
+                unset($syncItem->id);
+                try {
+                    $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
+                } catch(SugarCrmRestException $e) {
+                    $this->log("ERROR SAVING!!! - " . $e->getMessage());
+                }
+            }
+        }
+        else {
+            $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
+        }
+        return $result;
     }
 
 
