@@ -82,8 +82,9 @@ class AccountData {
     protected function saveRemoteItem($cacheItem) {
         $result = FALSE;
 
-        $metodoLastUpdate = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->metodo_last_update_time_c);
-        $crmLastUpdate = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->crm_last_update_time_c);
+        $ISO = 'Y-m-d\TH:i:sO';
+        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
+        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
         if ($metodoLastUpdate > $crmLastUpdate) {
             $this->log("-----------------------------------------------------------------------------------------");
@@ -101,6 +102,7 @@ class AccountData {
                 } catch(SugarCrmRestException $e) {
                     //go ahead with false silently
                     $this->log("ERROR SAVING!!! - " . $e->getMessage());
+                    //@todo: we should remove crm_id from $cacheItem
                 }
             }
             else {
@@ -108,6 +110,7 @@ class AccountData {
                 $this->log("creating...: " . json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
+
                 try {
                     $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
                 } catch(SugarCrmRestException $e) {
@@ -116,7 +119,10 @@ class AccountData {
             }
         }
         else {
+            $this->log("-----------------------------------------------------------------------------------------");
             $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
+            $this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
+            $this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
         }
         return $result;
     }
