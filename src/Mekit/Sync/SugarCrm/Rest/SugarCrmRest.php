@@ -141,6 +141,8 @@ class SugarCrmRest {
         curl_setopt($curl_request, CURLOPT_SSL_VERIFYPEER, 0);
         curl_setopt($curl_request, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($curl_request, CURLOPT_FOLLOWLOCATION, 0);
+        curl_setopt($curl_request, CURLOPT_CONNECTTIMEOUT, 5);//timeout in seconds
+        curl_setopt($curl_request, CURLOPT_TIMEOUT, 10); //timeout in seconds
 
         if (!empty($oauthtoken)) {
             $token = array("oauth-token: {$oauthtoken}");
@@ -167,8 +169,12 @@ class SugarCrmRest {
             //return the nonheader data
             return trim($content);
         }
-
+        $curl_errno = curl_errno($curl_request);
+        $curl_error = curl_error($curl_request);
         curl_close($curl_request);
+        if ($curl_errno > 0) {
+            throw new SugarCrmRestException($curl_error, $curl_errno);
+        }
 
         //decode the response from JSON
         $response = json_decode($result);

@@ -78,7 +78,8 @@ class AccountData {
             if (isset($remoteItem->updateFailure) && $remoteItem->updateFailure) {
                 //we must remove crm_id and reset crm_last_update_time_c on $cacheItem
                 $cacheUpdateItem->crm_id = NULL;
-                $cacheUpdateItem->crm_last_update_time_c = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+                $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+                $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
             }
             else {
                 $cacheUpdateItem->crm_id = $remoteItem->id;
@@ -108,7 +109,7 @@ class AccountData {
 
             //UPDATE
             if ($crm_id) {
-                $this->log("updating remote...");
+                $this->log("updating remote($crm_id)...");
                 //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
@@ -130,7 +131,7 @@ class AccountData {
                  * otherwise create
                  */
                 //CREATE
-                $this->log("creating remote...");
+                $this->log("creating remote(" . $syncItem->name . ")...");
                 //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
@@ -142,8 +143,8 @@ class AccountData {
             }
         }
         else {
-            $this->log("-----------------------------------------------------------------------------------------");
-            $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
+            //$this->log("-----------------------------------------------------------------------------------------");
+            //$this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
 //            $this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
 //            $this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
         }
