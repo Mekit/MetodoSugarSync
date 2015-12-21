@@ -393,17 +393,21 @@ class AccountData {
             $cacheUpdateItem->codice_fiscale_c = $localItem->CodiceFiscale;
         }
 
-        //DECIDE OPERATION
-        $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
+        //DECIDE OPERATION(better to keep this off for now)
+        //$operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
         //add other data on item
-
-        //set it to "0"
         $cacheUpdateItem->crm_export_flag_c = $localItem->CrmExportFlag;
-
-
         $cacheUpdateItem->name = $localItem->RagioneSociale;
 
+        //ADD PAYLOAD
+        $payload = new \stdClass();
+        foreach (get_object_vars($localItem->payload) as $key => $data) {
+            if (!empty($data)) {
+                $payload->$key = $data;
+            }
+        }
+        $cacheUpdateItem->payload = json_encode($payload);
 
         if ($operation == "update") {
             $this->log("-----------------------------------------------------------------------------------------");
@@ -456,7 +460,14 @@ class AccountData {
                 CrmExportFlag = CASE
                      WHEN EXTC.SOGCRM_Esportabile IS NOT NULL THEN EXTC.SOGCRM_Esportabile
                      WHEN EXTF.SOGCRM_Esportabile IS NOT NULL THEN EXTF.SOGCRM_Esportabile
-                     ELSE 1 END
+                     ELSE 1 END,
+                ACF.INDIRIZZO AS FtVia,
+                ACF.CAP AS FtCAP,
+                ACF.LOCALITA AS FtComune,
+                ACF.PROVINCIA AS FtProvincia,
+                ACF.CODICEISO AS FtPaese,
+                ACF.TELEFONO AS Telefono,
+                ACF.FAX AS Fax
                 FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                 LEFT JOIN [$database].dbo.EXTRACLIENTI AS EXTC ON ACF.CODCONTO = EXTC.CODCONTO
@@ -472,6 +483,17 @@ class AccountData {
             $item->CodiceMetodo = trim($item->CodiceMetodo);
             $item->database = $database;
             $item->RagioneSociale = $item->Nome1 . (!empty($item->Nome2) ? ' - ' . $item->Nome2 : '');
+            //PAYLOAD
+            $payload = new \stdClass();
+            $payload->billing_address_street = trim($item->FtVia);
+            $payload->billing_address_postalcode = trim($item->FtCAP);
+            $payload->billing_address_city = trim($item->FtComune);
+            $payload->billing_address_state = trim($item->FtProvincia);
+            $payload->billing_address_country = (trim($item->FtPaese) == "IT" ? "ITALIA" : trim($item->FtPaese));
+            $payload->phone_office = trim($item->Telefono);
+            $payload->phone_fax = trim($item->Fax);
+            $item->payload = $payload;
+
         }
         else {
             $this->localItemStatement = NULL;
