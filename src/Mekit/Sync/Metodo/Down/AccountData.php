@@ -66,11 +66,16 @@ class AccountData {
         if ($remoteItem) {
             $cacheUpdateItem = new \stdClass();
             $cacheUpdateItem->id = $cacheItem->id;
-            if (empty($cacheItem->crm_id)) {
-                $cacheUpdateItem->crm_id = $remoteItem->id;
+            if (isset($remoteItem->updateFailure) && $remoteItem->updateFailure) {
+                //we must remove crm_id and reset crm_last_update_time_c on $cacheItem
+                $cacheUpdateItem->crm_id = NULL;
+                $cacheUpdateItem->crm_last_update_time_c = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
             }
-            $now = new \DateTime();
-            $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
+            else {
+                $cacheUpdateItem->crm_id = $remoteItem->id;
+                $now = new \DateTime();
+                $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
+            }
             $this->cacheDb->updateItem($cacheUpdateItem);
         }
     }
@@ -83,48 +88,118 @@ class AccountData {
         $result = FALSE;
 
         $ISO = 'Y-m-d\TH:i:sO';
+        //$metodoLastUpdate = new \DateTime();
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
         if ($metodoLastUpdate > $crmLastUpdate) {
             $this->log("-----------------------------------------------------------------------------------------");
-
             $syncItem = clone($cacheItem);
+            $crm_id = $this->loadRemoteItemId($cacheItem);
 
-            if (!empty($syncItem->crm_id)) {
-                //@todo: check if 'crm_export_flag_c' is 0
-                $this->log("updating...: " . json_encode($syncItem));
-                $crmid = $syncItem->crm_id;
+            //UPDATE
+            if ($crm_id) {
+                $this->log("updating remote...");
+                //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
                 try {
-                    $result = $this->sugarCrmRest->comunicate('/Accounts/' . $crmid, 'PUT', $syncItem);
+                    $result = $this->sugarCrmRest->comunicate('/Accounts/' . $crm_id, 'PUT', $syncItem);
                 } catch(SugarCrmRestException $e) {
                     //go ahead with false silently
-                    $this->log("ERROR SAVING!!! - " . $e->getMessage());
-                    //@todo: we should remove crm_id from $cacheItem
+                    $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
+                    //we must remove crm_id from $cacheItem
+                    //create fake result
+                    $result = new \stdClass();
+                    $result->updateFailure = TRUE;
                 }
             }
             else {
+                /*
+                 * @todo: check if 'crm_export_flag_c' is 0
+                 * if "0" check if account exists by P.IVA and if it does update it - if not skip
+                 * otherwise create
+                 */
                 //CREATE
-                $this->log("creating...: " . json_encode($syncItem));
+                $this->log("creating remote...");
+                //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
-
                 try {
                     $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
                 } catch(SugarCrmRestException $e) {
-                    $this->log("ERROR SAVING!!! - " . $e->getMessage());
+                    $this->log("REMOTE INSERT ERROR!!! - " . $e->getMessage());
                 }
             }
         }
         else {
             $this->log("-----------------------------------------------------------------------------------------");
             $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
-            $this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
-            $this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
+//            $this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
+//            $this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
         }
+
         return $result;
+    }
+
+    /**
+     * Remote(CRM) items cannot be identified by ID because if we reset cache table(removing remote crm_id reference)
+     * They would be recreated all over again
+     * @param \stdClass $cacheItem
+     * @return string|bool
+     * @throws \Exception
+     */
+    protected function loadRemoteItemId($cacheItem) {
+        $crm_id = FALSE;
+        $filter = [];
+        $fields = [
+            "metodo_client_code_imp_c",
+            "metodo_supplier_code_imp_c",
+            "metodo_client_code_mekit_c",
+            "metodo_supplier_code_mekit_c"
+        ];
+
+        //identify by the first code
+        foreach ($fields as $fieldName) {
+            if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
+                $filter[] = [$fieldName => $cacheItem->$fieldName];
+                break;
+            }
+        }
+
+        //try to load 2 of them - if there are more than one it is very BAD!!!
+        if (count($filter)) {
+            $arguments = [
+                "filter" => $filter,
+                "max_num" => 2,
+                "offset" => 0,
+                "fields" => "id",
+            ];
+            try {
+                $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
+            } catch(SugarCrmRestException $e) {
+                //go ahead silently with false
+            }
+            if (isset($result) && isset($result->records)) {
+                if (count($result->records) > 1) {
+                    //This should never happen!!!
+                    throw new \Exception(
+                        "There is a multiple correspondence for requested codes!" . json_encode($filter)
+                    );
+                }
+                if (count($result->records) == 1) {
+                    /** @var \stdClass $remoteItem */
+                    $remoteItem = $result->records[0];
+                    //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
+                    $crm_id = $remoteItem->id;
+                }
+            }
+        }
+        else {
+            //This should never happen!!!
+            throw new \Exception("CacheItem does not have usable code!");
+        }
+        return ($crm_id);
     }
 
 
@@ -328,8 +403,8 @@ class AccountData {
                 . "[" . $localItem->ClienteDiFatturazione . "]"
                 . " " . $localItem->RagioneSociale . ""
             );
-            //$this->log("CACHED: " . json_encode($cachedItem));
-            //$this->log("UPDATE: " . json_encode($cacheUpdateItem));
+            $this->log("CACHED: " . json_encode($cachedItem));
+            $this->log("UPDATE: " . json_encode($cacheUpdateItem));
             $this->log("-----------------------------------------------------------------------------------------");
         }
         if (!empty($warnings)) {
@@ -368,11 +443,15 @@ class AccountData {
                 ACF.DSCCONTO2 AS Nome2,
                 ACF.DATAMODIFICA AS DataDiModifica,
                 ACFR.CODCONTOFATT AS ClienteDiFatturazione,
-                EXT.SOGCRM_Esportabile AS CrmExportFlag
+                CrmExportFlag = CASE
+                     WHEN EXTC.SOGCRM_Esportabile IS NOT NULL THEN EXTC.SOGCRM_Esportabile
+                     WHEN EXTF.SOGCRM_Esportabile IS NOT NULL THEN EXTF.SOGCRM_Esportabile
+                     ELSE 1 END
                 FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
-                INNER JOIN [$database].dbo.EXTRACLIENTI AS EXT ON ACF.CODCONTO = EXT.CODCONTO
-                ORDER BY ACFR.CODCONTOFATT ASC, ACF.CODCONTO ASC;
+                LEFT JOIN [$database].dbo.EXTRACLIENTI AS EXTC ON ACF.CODCONTO = EXTC.CODCONTO
+                LEFT JOIN [$database].dbo.EXTRAFORNITORI AS EXTF ON ACF.CODCONTO = EXTF.CODCONTO
+                ORDER BY ACF.DATAMODIFICA ASC;
                 ";
 
             $this->localItemStatement = $db->prepare($sql);

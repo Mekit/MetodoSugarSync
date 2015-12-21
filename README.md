@@ -1,4 +1,4 @@
-Metodo SugarCRM MetodoSync
+Metodo SugarCRM Sync
 =====================
 
 

@@ -51,6 +51,7 @@ class AccountCache extends CacheDb {
                    . ", name TEXT"
                    . ", metodo_last_update_time_c TEXT NOT NULL"
                    . ", crm_last_update_time_c TEXT NOT NULL"
+                   . ", payload TEXT"
                    . ")";
             $this->db->exec($sql);
             $this->db->exec("CREATE UNIQUE INDEX ID ON " . $this->dataIdentifier . " (id ASC)");
