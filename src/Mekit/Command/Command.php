@@ -49,7 +49,7 @@ class Command extends ConsoleCommand
    * Parse yml configuration
    */
   protected function parseConfiguration() {
-    $config_file = __DIR__ . '/../../../' . $this->configDir . '/' . $this->cmdInput->getArgument('config_file');
+      $config_file = $this->cmdInput->getArgument('config_file');
     Configuration::initializeWithConfigurationFile($config_file);
   }
 
