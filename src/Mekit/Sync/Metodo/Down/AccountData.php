@@ -7,7 +7,6 @@
 
 namespace Mekit\Sync\Metodo\Down;
 
-
 use Mekit\Console\Configuration;
 use Mekit\DbCache\AccountCache;
 use Mekit\Sync\SugarCrm\Rest\SugarCrmRest;
@@ -29,6 +28,9 @@ class AccountData {
     /** @var  \PDOStatement */
     protected $localItemStatement;
 
+    /** @var bool */
+    protected $skipRemoteUpdate = FALSE;
+
     /**
      * @param callable $logger
      */
@@ -36,6 +38,8 @@ class AccountData {
         $this->logger = $logger;
         $this->cacheDb = new AccountCache($this->dataIdentifier, $logger);
         $this->sugarCrmRest = new SugarCrmRest();
+        $cfg = Configuration::getConfiguration();
+        $this->skipRemoteUpdate = (isset($cfg["global"]["skip_remote_update"]) && $cfg["global"]["skip_remote_update"]);
     }
 
     public function execute() {
@@ -50,11 +54,16 @@ class AccountData {
                 $this->saveLocalItemInCache($localItem);
             }
         }
-        $this->log("updating remote...");
-        $this->cacheDb->resetItemWalker();
-        while ($cacheItem = $this->cacheDb->getNextItem()) {
-            $remoteItem = $this->saveRemoteItem($cacheItem);
-            $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+        if (!$this->skipRemoteUpdate) {
+            $this->log("updating remote...");
+            $this->cacheDb->resetItemWalker();
+            while ($cacheItem = $this->cacheDb->getNextItem()) {
+                $remoteItem = $this->saveRemoteItem($cacheItem);
+                $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+            }
+        }
+        else {
+            $this->log("Remote update is disabled by configuration!");
         }
     }
 
