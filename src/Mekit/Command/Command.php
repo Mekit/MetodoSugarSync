@@ -33,7 +33,7 @@ class Command extends ConsoleCommand
   protected function _execute(InputInterface $input, OutputInterface $output) {
     $this->cmdInput = $input;
     $this->cmdOutput = $output;
-    $this->parseConfiguration();
+      $this->setConfigurationFile();
   }
 
 
@@ -48,9 +48,16 @@ class Command extends ConsoleCommand
   /**
    * Parse yml configuration
    */
-  protected function parseConfiguration() {
+    protected function setConfigurationFile() {
       $config_file = $this->cmdInput->getArgument('config_file');
-    Configuration::initializeWithConfigurationFile($config_file);
+        $configPath = realpath($config_file);
+        if (!$configPath) {
+            $configPath = realpath(PROJECT_ROOT . '/config/' . $config_file);
+        }
+        if (!$configPath) {
+            throw new \InvalidArgumentException("The configuration file does not exist!");
+        }
+        Configuration::initializeWithConfigurationFile($configPath);
   }
 
   /**
