@@ -68,7 +68,8 @@ class Command extends ConsoleCommand {
     protected function setupLogger() {
         $this->logger = new Logger("file_logger");
         $today = new \DateTime();
-        $logFilePath = PROJECT_ROOT . '/log/' . $today->format("Y-m-d H:i:s") . '.txt';
+        $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . $today->format("Y-m-d@H_i_s")
+                       . '.txt';
         $logHandler = new StreamHandler($logFilePath, Logger::INFO);
         $this->logger->pushHandler($logHandler);
     }
