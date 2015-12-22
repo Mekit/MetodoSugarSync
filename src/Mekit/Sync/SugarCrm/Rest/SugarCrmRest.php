@@ -86,6 +86,7 @@ class SugarCrmRest {
                 $password = $cfg["sugarcrm"]["password"];
                 $clientid = $cfg["sugarcrm"]["consumer_key"];
                 $clientsecret = $cfg["sugarcrm"]["consumer_secret"];
+                $platform = "MetodoSugarSync";
                 $loginUrl = $baseUrl . "/oauth2/token";
                 $arguments = array(
                     "grant_type" =>     "password",
@@ -93,7 +94,7 @@ class SugarCrmRest {
                     "client_secret" =>  $clientsecret,
                     "username" =>       $username,
                     "password" =>       $password,
-                    "platform" =>       "base"
+                    "platform" => $platform
                 );
                 /** @var \stdClass $token */
                 $token = $this->call($loginUrl, '', 'POST', $arguments);

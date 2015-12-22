@@ -96,7 +96,6 @@ class AccountData {
      */
     protected function saveRemoteItem($cacheItem) {
         $result = FALSE;
-
         $ISO = 'Y-m-d\TH:i:sO';
         //$metodoLastUpdate = new \DateTime();
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
@@ -106,11 +105,33 @@ class AccountData {
             $this->log("-----------------------------------------------------------------------------------------");
             $syncItem = clone($cacheItem);
             $crm_id = $this->loadRemoteItemId($cacheItem);
+            //add payload to syncItem
+            $payload = $this->getLocalItemPayload($cacheItem);
+            if ($payload) {
+                foreach ($payload as $key => $payloadData) {
+                    //special cases
+                    if ($key == "email") {
+                        $syncItem->$key = [
+                            [
+                                "email_address" => $payloadData,
+                                "invalid_email" => FALSE,
+                                "opt_out" => FALSE,
+                                "primary_address" => FALSE,
+                                "reply_to_address" => FALSE
+                            ]
+                        ];
+                        $syncItem->email1 = $payloadData;
+                    }
+                    else {
+                        $syncItem->$key = $payloadData;
+                    }
+                }
+            }
 
             //UPDATE
             if ($crm_id) {
                 $this->log("updating remote($crm_id)...");
-                //$this->log(json_encode($syncItem));
+                $this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
                 try {
@@ -144,12 +165,36 @@ class AccountData {
         }
         else {
             //$this->log("-----------------------------------------------------------------------------------------");
-            //$this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
-//            $this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
-//            $this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
+            $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
+            //$this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
+            //$this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
         }
-
+        //$this->log("REMOTE RESULT: " . json_encode($result));
         return $result;
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @return array
+     * @throws \Exception
+     */
+    protected function getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem) {
+        $answer = [];
+        $fields = [
+            "metodo_client_code_imp_c",
+            "metodo_supplier_code_imp_c",
+            "metodo_client_code_mekit_c",
+            "metodo_supplier_code_mekit_c"
+        ];
+        foreach ($fields as $fieldName) {
+            if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
+                $answer[] = $fieldName;
+            }
+        }
+        if (!count($answer)) {
+            throw new \Exception("No non-empty field names can be found on cache item!");
+        }
+        return $answer;
     }
 
     /**
@@ -162,20 +207,11 @@ class AccountData {
     protected function loadRemoteItemId($cacheItem) {
         $crm_id = FALSE;
         $filter = [];
-        $fields = [
-            "metodo_client_code_imp_c",
-            "metodo_supplier_code_imp_c",
-            "metodo_client_code_mekit_c",
-            "metodo_supplier_code_mekit_c"
-        ];
 
-        //identify by the first code
-        foreach ($fields as $fieldName) {
-            if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
-                $filter[] = [$fieldName => $cacheItem->$fieldName];
-                break;
-            }
-        }
+        //identify by codice metodo - the first one found
+        $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
+        $fieldName = $fieldNames[0];
+        $filter[] = [$fieldName => $cacheItem->$fieldName];
 
         //try to load 2 of them - if there are more than one it is very BAD!!!
         if (count($filter)) {
@@ -394,22 +430,13 @@ class AccountData {
         }
 
         //DECIDE OPERATION(better to keep this off for now)
-        //$operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
+        $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
         //add other data on item
         $cacheUpdateItem->crm_export_flag_c = $localItem->CrmExportFlag;
         $cacheUpdateItem->name = $localItem->RagioneSociale;
 
-        //ADD PAYLOAD
-        $payload = new \stdClass();
-        foreach (get_object_vars($localItem->payload) as $key => $data) {
-            if (!empty($data)) {
-                $payload->$key = $data;
-            }
-        }
-        $cacheUpdateItem->payload = json_encode($payload);
-
-        if ($operation == "update") {
+        if ($operation != "skip") {
             $this->log("-----------------------------------------------------------------------------------------");
             $this->log(
                 "[" . $localItem->database . "][$operation][$identifiedBy]-"
@@ -442,6 +469,93 @@ class AccountData {
     }
 
     /**
+     * @param $cacheItem
+     * @return array|bool
+     * @throws \Exception
+     */
+    protected function getLocalItemPayload($cacheItem) {
+        $answer = FALSE;
+        $db = Configuration::getDatabaseConnection("SERVER2K8");
+        $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
+        $databases = ["IMP", "MEKIT"];
+        $items = [];
+        foreach ($databases as $database) {
+            $metodoCodes = [];
+            foreach ($fieldNames as $fieldName) {
+                if (preg_match("#^metodo_(client|supplier)_code_" . strtolower($database) . "_c$#", $fieldName)) {
+                    $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
+                }
+            }
+            if (count($metodoCodes)) {
+                $sql = "SELECT
+                    ACF.DATAMODIFICA AS last_updated_at,
+                    ACF.INDIRIZZO AS billing_address_street,
+                    ACF.CAP AS billing_address_postalcode,
+                    ACF.LOCALITA AS billing_address_city,
+                    ACF.PROVINCIA AS billing_address_state,
+                    ACF.CODICEISO AS billing_address_country,
+                    ACF.TELEFONO AS phone_office,
+                    ACF.FAX AS phone_fax,
+                    ACF.TELEX AS email,
+                    ACF.INDIRIZZOINTERNET AS website
+                    FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
+                    WHERE ACF.CODCONTO IN (" . implode(",", $metodoCodes) . ")
+                    ";
+                $statement = $db->prepare($sql);
+                $statement->execute();
+                $itemList = $statement->fetchAll(\PDO::FETCH_ASSOC);
+                if (count($itemList)) {
+                    $items = array_merge($items, $itemList);
+                }
+            }
+        }
+
+        if (count($items)) {
+            $answer = [];
+            //convert to date
+            foreach ($items as &$item) {
+                $item["last_updated_at"] = \DateTime::createFromFormat('Y-m-d H:i:s.u', $item["last_updated_at"]);
+            }
+
+            //Sort by last_updated_at date ascending
+            usort(
+                $items, function ($item1, $item2) {
+                if ($item1['last_updated_at'] == $item2['last_updated_at']) {
+                    return 0;
+                }
+                return ($item1['last_updated_at'] > $item2['last_updated_at']) ? 1 : -1;
+            }
+            );
+
+            //merge data into single data
+            foreach ($items as &$item) {
+                unset($item["last_updated_at"]);//no need for this anymore
+                foreach ($item as $itemKey => &$itemData) {
+                    if (!empty(trim($itemData))) {
+                        $itemData = trim($itemData);
+                        //special cases
+                        if ($itemKey == "billing_address_country") {
+                            $itemData = ($itemData == "IT" ? "ITALIA" : $itemData);
+                        }
+                    }
+                    else {
+                        unset($item[$itemKey]);
+                    }
+                }
+                $answer = array_merge($answer, $item);
+            }
+
+            if (count($items) > 1) {
+                $this->log("-------------------------------------------------------------------------------------------------");
+                $this->log("MERGED MULTIPLE PAYLOAD ITEMS(SORTED BY DATE): " . json_encode($items));
+                $this->log("MERGE RESULT: " . json_encode($answer));
+            }
+        }
+        return $answer;
+    }
+
+
+    /**
      * @param string $database IMP|MEKIT
      * @return bool|\stdClass
      */
@@ -460,14 +574,7 @@ class AccountData {
                 CrmExportFlag = CASE
                      WHEN EXTC.SOGCRM_Esportabile IS NOT NULL THEN EXTC.SOGCRM_Esportabile
                      WHEN EXTF.SOGCRM_Esportabile IS NOT NULL THEN EXTF.SOGCRM_Esportabile
-                     ELSE 1 END,
-                ACF.INDIRIZZO AS FtVia,
-                ACF.CAP AS FtCAP,
-                ACF.LOCALITA AS FtComune,
-                ACF.PROVINCIA AS FtProvincia,
-                ACF.CODICEISO AS FtPaese,
-                ACF.TELEFONO AS Telefono,
-                ACF.FAX AS Fax
+                     ELSE 1 END
                 FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                 LEFT JOIN [$database].dbo.EXTRACLIENTI AS EXTC ON ACF.CODCONTO = EXTC.CODCONTO
@@ -483,17 +590,6 @@ class AccountData {
             $item->CodiceMetodo = trim($item->CodiceMetodo);
             $item->database = $database;
             $item->RagioneSociale = $item->Nome1 . (!empty($item->Nome2) ? ' - ' . $item->Nome2 : '');
-            //PAYLOAD
-            $payload = new \stdClass();
-            $payload->billing_address_street = trim($item->FtVia);
-            $payload->billing_address_postalcode = trim($item->FtCAP);
-            $payload->billing_address_city = trim($item->FtComune);
-            $payload->billing_address_state = trim($item->FtProvincia);
-            $payload->billing_address_country = (trim($item->FtPaese) == "IT" ? "ITALIA" : trim($item->FtPaese));
-            $payload->phone_office = trim($item->Telefono);
-            $payload->phone_fax = trim($item->Fax);
-            $item->payload = $payload;
-
         }
         else {
             $this->localItemStatement = NULL;

@@ -25,7 +25,7 @@ class CacheDb extends SqliteDb {
     public function getNextItem() {
         $answer = FALSE;
         if (!$this->itemWalker) {
-            $query = "SELECT * FROM " . $this->dataIdentifier;
+            $query = "SELECT * FROM " . $this->dataIdentifier . " ORDER BY metodo_last_update_time_c ASC";
             $this->itemWalker = $this->db->prepare($query);
             $this->itemWalker->execute();
         }
