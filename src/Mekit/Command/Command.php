@@ -27,6 +27,9 @@ class Command extends ConsoleCommand {
     /** @var  Logger */
     protected $logger;
 
+    /** @var bool */
+    protected $logToConsole = FALSE;
+
     /**
      * @param string $name
      */
@@ -72,17 +75,21 @@ class Command extends ConsoleCommand {
                        . '.txt';
         $logHandler = new StreamHandler($logFilePath, Logger::INFO);
         $this->logger->pushHandler($logHandler);
+        //
+        $cfg = Configuration::getConfiguration();
+        if (isset($cfg['global']['log_to_console']) && $cfg['global']['log_to_console']) {
+            $this->logToConsole = TRUE;
+        }
     }
 
     /**
      * @param string $msg
+     * @todo: set log level
      */
     public function log($msg) {
-        $cfg = Configuration::getConfiguration();
-        if (isset($cfg['global']['log_to_console']) && $cfg['global']['log_to_console']) {
+        if ($this->logToConsole) {
             $this->cmdOutput->writeln($msg);
         }
         $this->logger->addInfo($msg);
     }
-
 }

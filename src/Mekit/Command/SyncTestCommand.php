@@ -42,19 +42,8 @@ class SyncTestCommand extends Command implements CommandInterface
   protected function execute(InputInterface $input, OutputInterface $output) {
     parent::_execute($input, $output);
     $this->log("Starting command " . static::COMMAND_NAME . "...");
-    $this->checkConfiguration();
     $this->executeCommand();
     $this->log("Command " . static::COMMAND_NAME . " done.");
-  }
-
-  /**
-   * Execute some configuration checks
-   */
-  protected function checkConfiguration() {
-    $cfg = Configuration::getConfiguration();
-    if(!isset($cfg["commands"][static::COMMAND_NAME])) {
-      throw new \LogicException("No configuration is defined for the command '". static::COMMAND_NAME ."'!");
-    }
   }
 
   /**
@@ -63,5 +52,4 @@ class SyncTestCommand extends Command implements CommandInterface
   protected function executeCommand() {
     $this->log(static::COMMAND_NAME . " working...");
   }
-
 }

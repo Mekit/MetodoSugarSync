@@ -9,8 +9,8 @@ namespace Mekit\Sync\Metodo\Down;
 
 use Mekit\Console\Configuration;
 use Mekit\DbCache\AccountCache;
-use Mekit\Sync\SugarCrm\Rest\SugarCrmRest;
-use Mekit\Sync\SugarCrm\Rest\SugarCrmRestException;
+use Mekit\SugarCrm\Rest\SugarCrmRest;
+use Mekit\SugarCrm\Rest\SugarCrmRestException;
 
 class AccountData {
     /** @var callable */
