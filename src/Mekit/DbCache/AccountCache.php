@@ -21,8 +21,8 @@ class AccountCache extends CacheDb {
 
 
     protected function setupDatabase() {
-        $cfg = Configuration::getConfiguration();
-        if ($cfg["cache"]["force_recreate_tables"]) {
+        //@todo: make option/command for this
+        if (FALSE) {
             $this->db->exec("DROP TABLE IF EXISTS " . $this->dataIdentifier);
             $this->log("Cache table($this->dataIdentifier) dropped.");
         }
