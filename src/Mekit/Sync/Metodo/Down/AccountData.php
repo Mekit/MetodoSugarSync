@@ -497,7 +497,8 @@ class AccountData {
                     ACF.TELEFONO AS phone_office,
                     ACF.FAX AS phone_fax,
                     ACF.TELEX AS email,
-                    ACF.INDIRIZZOINTERNET AS website
+                    ACF.INDIRIZZOINTERNET AS website,
+                    ACF.NOTE AS metodo_notes_" . strtolower($database) . "_c
                     FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
                     WHERE ACF.CODCONTO IN (" . implode(",", $metodoCodes) . ")
                     ";
