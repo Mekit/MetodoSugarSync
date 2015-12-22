@@ -31,6 +31,9 @@ class AccountData {
     /** @var bool */
     protected $skipRemoteUpdate = FALSE;
 
+    /** @var array */
+    protected $counters = [];
+
     /**
      * @param callable $logger
      */
@@ -57,7 +60,9 @@ class AccountData {
         if (!$this->skipRemoteUpdate) {
             $this->log("updating remote...");
             $this->cacheDb->resetItemWalker();
+            $this->counters["remote"]["index"] = 0;
             while ($cacheItem = $this->cacheDb->getNextItem()) {
+                $this->counters["remote"]["index"]++;
                 $remoteItem = $this->saveRemoteItem($cacheItem);
                 $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
             }
@@ -101,8 +106,13 @@ class AccountData {
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
+        $this->log(
+            "-----------------------------------------------------------------------------------------"
+            . $this->counters["remote"]["index"]
+        );
+
         if ($metodoLastUpdate > $crmLastUpdate) {
-            $this->log("-----------------------------------------------------------------------------------------");
+
             $syncItem = clone($cacheItem);
             $crm_id = $this->loadRemoteItemId($cacheItem);
             //add payload to syncItem
@@ -127,11 +137,13 @@ class AccountData {
                     }
                 }
             }
+            //add special data
+            $syncItem->profiling = 0;//"Da profilare"
 
             //UPDATE
             if ($crm_id) {
-                $this->log("updating remote($crm_id)...");
-                $this->log(json_encode($syncItem));
+                $this->log("updating remote($crm_id): " . $syncItem->name);
+                //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
                 try {
@@ -164,7 +176,6 @@ class AccountData {
             }
         }
         else {
-            //$this->log("-----------------------------------------------------------------------------------------");
             $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
             //$this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
             //$this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
