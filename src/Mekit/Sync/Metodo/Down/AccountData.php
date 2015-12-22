@@ -599,6 +599,7 @@ class AccountData {
 
     /**
      * @param string $database
+     * @param string $type
      * @return string
      * @throws \Exception
      */
