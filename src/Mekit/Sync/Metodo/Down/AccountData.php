@@ -138,7 +138,7 @@ class AccountData {
                 }
             }
             //add special data
-            $syncItem->profiling = 0;//"Da profilare"
+            $syncItem->profiling_c = FALSE;//"Da profilare"
 
             //UPDATE
             if ($crm_id) {
