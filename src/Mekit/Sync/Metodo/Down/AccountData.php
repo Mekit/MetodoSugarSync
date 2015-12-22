@@ -28,9 +28,6 @@ class AccountData {
     /** @var  \PDOStatement */
     protected $localItemStatement;
 
-    /** @var bool */
-    protected $skipRemoteUpdate = FALSE;
-
     /** @var array */
     protected $counters = [];
 
@@ -41,8 +38,6 @@ class AccountData {
         $this->logger = $logger;
         $this->cacheDb = new AccountCache($this->dataIdentifier, $logger);
         $this->sugarCrmRest = new SugarCrmRest();
-        $cfg = Configuration::getConfiguration();
-        $this->skipRemoteUpdate = (isset($cfg["global"]["skip_remote_update"]) && $cfg["global"]["skip_remote_update"]);
     }
 
     public function execute() {
@@ -57,18 +52,13 @@ class AccountData {
                 $this->saveLocalItemInCache($localItem);
             }
         }
-        if (!$this->skipRemoteUpdate) {
-            $this->log("updating remote...");
-            $this->cacheDb->resetItemWalker();
-            $this->counters["remote"]["index"] = 0;
-            while ($cacheItem = $this->cacheDb->getNextItem()) {
-                $this->counters["remote"]["index"]++;
-                $remoteItem = $this->saveRemoteItem($cacheItem);
-                $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-            }
-        }
-        else {
-            $this->log("Remote update is disabled by configuration!");
+        $this->log("updating remote...");
+        $this->cacheDb->resetItemWalker();
+        $this->counters["remote"]["index"] = 0;
+        while ($cacheItem = $this->cacheDb->getNextItem()) {
+            $this->counters["remote"]["index"]++;
+            $remoteItem = $this->saveRemoteItem($cacheItem);
+            $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
         }
     }
 
