@@ -86,7 +86,7 @@ class SugarCrmRest {
                 $password = $cfg["sugarcrm"]["password"];
                 $clientid = $cfg["sugarcrm"]["consumer_key"];
                 $clientsecret = $cfg["sugarcrm"]["consumer_secret"];
-                $platform = "MetodoSugarSync";
+                $platform = $cfg["sugarcrm"]["platform"];
                 $loginUrl = $baseUrl . "/oauth2/token";
                 $arguments = array(
                     "grant_type" =>     "password",

@@ -17,14 +17,11 @@ configuration:
         database: DB2
         username: user
         password: pwd
-  commands:
-      "sync:test":
-        v1: this is for the command "test"
-      "sync:up":
-        description: Synchronize upwards
-        sync:
-          - Mekit\Sync\Metodo\MetodoSync
-      "sync:down":
-        description: Synchronize downwards
-        sync:
-          - Mekit\Sync\Metodo\MetodoSync
+  sugarcrm:
+        url: http://myhost.com/rest/v10
+        username: admin
+        password: 'password'
+        consumer_key: MyConsumerKey
+        consumer_secret: 'secret'
+        platform: MetodoSugarSync
+
