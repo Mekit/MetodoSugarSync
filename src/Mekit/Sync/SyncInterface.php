@@ -9,8 +9,9 @@ namespace Mekit\Sync;
 
 
 interface SyncInterface {
-  /** Main sync UP method */
-  function syncUp();
-  /** Main sync DOWN method */
-  function syncDown();
+    /**
+     * Main execution method
+     * @param array $options
+     */
+    function execute($options);
 }

@@ -7,8 +7,6 @@
 
 namespace Mekit\DbCache;
 
-use Mekit\Console\Configuration;
-
 class AccountCache extends CacheDb {
     /**
      * @param string   $dataIdentifier
@@ -19,6 +17,16 @@ class AccountCache extends CacheDb {
         $this->setupDatabase();
     }
 
+    public function invalidateAll() {
+        $this->log("INVALIDATING LOCAL CACHE DATA FOR: " . $this->dataIdentifier);
+        $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+        $query = "UPDATE " . $this->dataIdentifier . " SET"
+                 . " metodo_last_update_time_c = '" . $oldDate->format("c") . "'"
+                 . ", crm_last_update_time_c = '" . $oldDate->format("c") . "'"
+                 . ";";
+        $statement = $this->db->prepare($query);
+        $statement->execute();
+    }
 
     protected function setupDatabase() {
         //@todo: make option/command for this

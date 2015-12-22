@@ -136,6 +136,17 @@ class CacheDb extends SqliteDb {
         return $answer;
     }
 
+    public function removeAll() {
+        $this->log(__CLASS__ . " - REMOVING ALL CACHE DATA FOR: " . $this->dataIdentifier);
+        $query = "DELETE FROM " . $this->dataIdentifier . ";";
+        $statement = $this->db->prepare($query);
+        $statement->execute();
+    }
+
+    public function invalidateAll() {
+        throw new \Exception(__CLASS__ . ": Method invalidateAll must be implemented in extending class!");
+    }
+
 
     /**
      * @throws \Exception

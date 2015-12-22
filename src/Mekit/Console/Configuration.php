@@ -8,8 +8,6 @@
 
 namespace Mekit\Console;
 
-use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Tools\Setup;
 use Symfony\Component\Filesystem\Exception\IOException;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Yaml\Exception\ParseException;
@@ -44,7 +42,6 @@ class Configuration {
      * @return bool|\PDO
      */
     public static function getDatabaseConnection($databaseName) {
-        $connection = FALSE;
         $cfg = self::getConfiguration();
         if (!isset($cfg["databases"][$databaseName]) || !is_array($cfg["databases"][$databaseName])) {
             throw new \LogicException("Missing configuration for $databaseName in 'databases' section!");
@@ -75,7 +72,7 @@ class Configuration {
         $yamlParser = new Parser();
         $config = $yamlParser->parse(file_get_contents($configPath));
         if (!is_array($config) || !isset($config["configuration"])) {
-            throw new \InvalidArgumentException("Malformed configuration file!");
+            throw new \InvalidArgumentException("Malformed configuration file!" . $configPath);
         }
         $config = $config["configuration"];
 

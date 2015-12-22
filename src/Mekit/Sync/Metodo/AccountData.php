@@ -5,14 +5,16 @@
  * Time: 11.32
  */
 
-namespace Mekit\Sync\Metodo\Down;
+namespace Mekit\Sync\Metodo;
 
 use Mekit\Console\Configuration;
 use Mekit\DbCache\AccountCache;
 use Mekit\SugarCrm\Rest\SugarCrmRest;
 use Mekit\SugarCrm\Rest\SugarCrmRestException;
+use Mekit\Sync\Sync;
+use Mekit\Sync\SyncInterface;
 
-class AccountData {
+class AccountData extends Sync implements SyncInterface {
     /** @var callable */
     protected $logger;
 
@@ -35,23 +37,45 @@ class AccountData {
      * @param callable $logger
      */
     public function __construct($logger) {
-        $this->logger = $logger;
+        parent::__construct($logger);
         $this->cacheDb = new AccountCache($this->dataIdentifier, $logger);
         $this->sugarCrmRest = new SugarCrmRest();
     }
 
-    public function execute() {
-        $this->updateLocalCache();
+    /**
+     * @param array $options
+     */
+    public function execute($options) {
+        $this->log("EXECUTING..." . json_encode($options));
+        if (isset($options["delete-cache"]) && $options["delete-cache"]) {
+            $this->cacheDb->removeAll();
+        }
 
+        if (isset($options["invalidate-cache"]) && $options["invalidate-cache"]) {
+            $this->cacheDb->invalidateAll();
+        }
+
+        if (isset($options["update-cache"]) && $options["update-cache"]) {
+            $this->updateLocalCache();
+        }
+
+        if (isset($options["update-remote"]) && $options["update-remote"]) {
+            $this->updateRemoteFromCache();
+        }
     }
 
     protected function updateLocalCache() {
         $this->log("updating local cache...");
+        $this->counters["cache"]["index"] = 0;
         foreach (["MEKIT", "IMP"] as $database) {
             while ($localItem = $this->getNextLocalItem($database)) {
+                $this->counters["cache"]["index"]++;
                 $this->saveLocalItemInCache($localItem);
             }
         }
+    }
+
+    protected function updateRemoteFromCache() {
         $this->log("updating remote...");
         $this->cacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
@@ -61,6 +85,8 @@ class AccountData {
             $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
         }
     }
+
+
 
     /**
      * @param \stdClass $cacheItem
@@ -438,7 +464,10 @@ class AccountData {
         $cacheUpdateItem->name = $localItem->RagioneSociale;
 
         if ($operation != "skip") {
-            $this->log("-----------------------------------------------------------------------------------------");
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["cache"]["index"]
+            );
             $this->log(
                 "[" . $localItem->database . "][$operation][$identifiedBy]-"
                 . "[" . $localItem->CodiceMetodo . "]"
@@ -447,7 +476,6 @@ class AccountData {
             );
             $this->log("CACHED: " . json_encode($cachedItem));
             $this->log("UPDATE: " . json_encode($cacheUpdateItem));
-            $this->log("-----------------------------------------------------------------------------------------");
         }
         if (!empty($warnings)) {
             foreach ($warnings as $warning) {

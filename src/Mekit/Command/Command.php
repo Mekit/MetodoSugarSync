@@ -40,17 +40,8 @@ class Command extends ConsoleCommand {
     protected function _execute(InputInterface $input, OutputInterface $output) {
         $this->cmdInput = $input;
         $this->cmdOutput = $output;
-        $this->setupLogger();
         $this->setConfigurationFile();
-    }
-
-
-    /**
-     * @return string
-     */
-    protected function getTemporaryFileName() {
-        $cfg = Configuration::getConfiguration();
-        return $cfg["temporary_path"] . "/" . md5("temporary-file-" . microtime()) . '.txt';
+        $this->setupLogger();
     }
 
     /**

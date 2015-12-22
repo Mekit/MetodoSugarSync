@@ -7,9 +7,10 @@
 
 namespace Mekit\Command;
 
-use Mekit\Sync\Metodo\Down\AccountData;
+use Mekit\Sync\Metodo\AccountData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class SyncAccountsCommand extends Command implements CommandInterface {
@@ -29,31 +30,51 @@ class SyncAccountsCommand extends Command implements CommandInterface {
         $this->setDefinition(
             [
                 new InputArgument(
-                    'config_file', InputArgument::REQUIRED, 'The yaml(.yml) configuration file inside the "'
-                                                            . $this->configDir
-                                                            . '" subfolder.'
+                    'config_file', InputArgument::REQUIRED,
+                    'The yaml(.yml) configuration file inside the "' . $this->configDir . '" subfolder.'
+                ),
+                new InputOption(
+                    'delete-cache', '', InputOption::VALUE_NONE,
+                    'Throw cache away?'
+                ),
+                new InputOption(
+                    'invalidate-cache', '', InputOption::VALUE_NONE,
+                    'Reset timestamps on cache so that updates will occur again?'
+                ),
+                new InputOption(
+                    'update-cache', NULL, InputOption::VALUE_NONE,
+                    'Update local cache?'
+                ),
+                new InputOption(
+                    'update-remote', NULL, InputOption::VALUE_NONE,
+                    'Update remote?'
                 ),
             ]
         );
     }
 
     /**
-     * @param InputInterface  $input
-     * @param OutputInterface $output
+     * @param \Symfony\Component\Console\Input\InputInterface   $input
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
      * @return bool
+     * @throws \Exception
      */
     protected function execute(InputInterface $input, OutputInterface $output) {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
-        $this->log("INPUT: " . json_encode($input->getArguments()));
+        $accountData = $this->getDataClass();
+        $accountData->execute($input->getOptions());
         $this->log("Command " . static::COMMAND_NAME . " done.");
+        return TRUE;
     }
 
     /**
-     * Execute Command
+     * @return AccountData
      */
-    protected function executeCommand() {
-        $accountData = new AccountData([$this, 'log']);
-        $accountData->execute();
+    protected function getDataClass() {
+        $class = "Mekit\\Sync\\Metodo\\AccountData";
+        /** @var AccountData $accountData */
+        $accountData = new $class([$this, 'log']);
+        return $accountData;
     }
 }
