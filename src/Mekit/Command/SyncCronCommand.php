@@ -58,7 +58,7 @@ class SyncCronCommand extends Command implements CommandInterface {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
         while (TRUE) {
-            $this->log("--- CRON HEARTBEAT ---");
+            //$this->log("--- CRON HEARTBEAT ---");
             $this->checkForEndedProcesses();
             $this->checkCommandsToExecute();
             sleep(self::COMMAND_HEARTBEAT);

@@ -30,6 +30,9 @@ class Command extends ConsoleCommand {
     /** @var bool */
     protected $logToConsole = FALSE;
 
+    /** @var bool */
+    protected $logToFile = FALSE;
+
     /**
      * @param string $name
      */
@@ -59,17 +62,27 @@ class Command extends ConsoleCommand {
         Configuration::initializeWithConfigurationFile($configPath);
     }
 
+    /**
+     *
+     */
     protected function setupLogger() {
-        $this->logger = new Logger("file_logger");
-        $today = new \DateTime();
-        $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . $today->format("Y-m-d")
-                       . '.txt';
-        $logHandler = new StreamHandler($logFilePath, Logger::INFO);
-        $this->logger->pushHandler($logHandler);
-        //
         $cfg = Configuration::getConfiguration();
-        if (isset($cfg['global']['log_to_console']) && $cfg['global']['log_to_console']) {
-            $this->logToConsole = TRUE;
+        $this->logToConsole = isset($cfg['global']['log_to_console']) && $cfg['global']['log_to_console'];
+        $this->logToFile = isset($cfg['global']['log_to_file']) && $cfg['global']['log_to_file'];
+        //
+        if ($this->logToFile) {
+            $logFilePrefix = (isset($cfg['global']['log_file_prefix']) && $cfg['global']['log_file_prefix']
+                ? $cfg['global']['log_file_prefix']
+                : ""
+            );
+            $this->logger = new Logger("file_logger");
+            $today = new \DateTime();
+            $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR
+                           . $logFilePrefix
+                           . $today->format("Y-m-d")
+                           . '.txt';
+            $logHandler = new StreamHandler($logFilePath, Logger::INFO);
+            $this->logger->pushHandler($logHandler);
         }
     }
 
