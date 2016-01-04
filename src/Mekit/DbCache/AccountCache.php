@@ -29,11 +29,6 @@ class AccountCache extends CacheDb {
     }
 
     protected function setupDatabase() {
-        //@todo: make option/command for this
-        if (FALSE) {
-            $this->db->exec("DROP TABLE IF EXISTS " . $this->dataIdentifier);
-            $this->log("Cache table($this->dataIdentifier) dropped.");
-        }
         $statement = $this->db->prepare(
             "SELECT COUNT(*) AS HASTABLE FROM sqlite_master WHERE type='table' AND name='" . $this->dataIdentifier . "'"
         );
