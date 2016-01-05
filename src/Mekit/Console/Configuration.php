@@ -44,7 +44,7 @@ class Configuration {
     public static function getDatabaseConnection($databaseName) {
         $cfg = self::getConfiguration();
         if (!isset($cfg["databases"][$databaseName]) || !is_array($cfg["databases"][$databaseName])) {
-            throw new \LogicException("Missing configuration for $databaseName in 'databases' section!");
+            throw new \LogicException("Missing configuration for $databaseName in 'database' section!");
         }
         $serverType = $cfg["databases"][$databaseName]["type"];
         $serverName = $cfg["databases"][$databaseName]["servername"];
@@ -74,7 +74,31 @@ class Configuration {
         if (!is_array($config) || !isset($config["configuration"])) {
             throw new \InvalidArgumentException("Malformed configuration file!" . $configPath);
         }
+
+        $imports = [];
+        if (isset($config["imports"]) && is_array($config["imports"]) && count($config["imports"])) {
+            $imports = $config["imports"];
+            unset($config["imports"]);
+        }
+
+
+        foreach ($imports as $import) {
+            if (isset($import["resource"])) {
+                $resourcePath = realpath(dirname($configPath) . '/' . $import["resource"]);
+                if ($resourcePath) {
+                    $additionalConfig = $yamlParser->parse(file_get_contents($resourcePath));
+                    $config = array_replace_recursive($additionalConfig, $config);
+                }
+                else {
+                    throw new \LogicException(
+                        "Import resource is set but cannot be found(" . $import["resource"] . ")!"
+                    );
+                }
+            }
+        }
+
         $config = $config["configuration"];
+        //print_r($config);
 
         //Temporary path checks & creation
         if (!isset($config["global"]["temporary_path"])) {
