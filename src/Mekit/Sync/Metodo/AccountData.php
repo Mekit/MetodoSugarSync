@@ -46,7 +46,7 @@ class AccountData extends Sync implements SyncInterface {
      * @param array $options
      */
     public function execute($options) {
-        $this->log("EXECUTING..." . json_encode($options));
+        //$this->log("EXECUTING..." . json_encode($options));
         if (isset($options["delete-cache"]) && $options["delete-cache"]) {
             $this->cacheDb->removeAll();
         }

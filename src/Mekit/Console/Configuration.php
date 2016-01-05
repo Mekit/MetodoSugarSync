@@ -43,19 +43,19 @@ class Configuration {
      */
     public static function getDatabaseConnection($databaseName) {
         $cfg = self::getConfiguration();
-        if (!isset($cfg["databases"][$databaseName]) || !is_array($cfg["databases"][$databaseName])) {
+        if (!isset($cfg["database"][$databaseName]) || !is_array($cfg["database"][$databaseName])) {
             throw new \LogicException("Missing configuration for $databaseName in 'database' section!");
         }
-        $serverType = $cfg["databases"][$databaseName]["type"];
-        $serverName = $cfg["databases"][$databaseName]["servername"];
-        $username = $cfg["databases"][$databaseName]["username"];
-        $password = $cfg["databases"][$databaseName]["password"];
+        $serverType = $cfg["database"][$databaseName]["type"];
+        $serverName = $cfg["database"][$databaseName]["servername"];
+        $username = $cfg["database"][$databaseName]["username"];
+        $password = $cfg["database"][$databaseName]["password"];
         switch ($serverType) {
             case "MSSQL":
                 $connection = new \PDO("odbc:$serverName", "$username", "$password");
                 break;
             default:
-                throw new \LogicException("The server type($serverType) for $databaseName is not recogniozed!");
+                throw new \LogicException("The server type($serverType) for $databaseName is not recognized!");
         }
         return $connection;
     }
