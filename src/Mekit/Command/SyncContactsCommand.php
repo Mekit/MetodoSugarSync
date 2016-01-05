@@ -7,15 +7,15 @@
 
 namespace Mekit\Command;
 
-use Mekit\Sync\Metodo\AccountData;
+use Mekit\Sync\Metodo\ContactData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SyncAccountsCommand extends Command implements CommandInterface {
-    const COMMAND_NAME = 'sync:accounts';
-    const COMMAND_DESCRIPTION = 'Synchronize Accounts';
+class SyncContactsCommand extends Command implements CommandInterface {
+    const COMMAND_NAME = 'sync:contacts';
+    const COMMAND_DESCRIPTION = 'Synchronize Contacts';
 
     public function __construct() {
         parent::__construct(NULL);
@@ -69,11 +69,11 @@ class SyncAccountsCommand extends Command implements CommandInterface {
     }
 
     /**
-     * @return AccountData
+     * @return ContactData
      */
     protected function getDataClass() {
-        $class = "Mekit\\Sync\\Metodo\\AccountData";
-        /** @var AccountData $dataClass */
+        $class = "Mekit\\Sync\\Metodo\\ContactData";
+        /** @var ContactData $dataClass */
         $dataClass = new $class([$this, 'log']);
         return $dataClass;
     }

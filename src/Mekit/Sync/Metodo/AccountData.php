@@ -87,7 +87,6 @@ class AccountData extends Sync implements SyncInterface {
     }
 
 
-
     /**
      * @param \stdClass $cacheItem
      * @param \stdClass $remoteItem
@@ -701,12 +700,5 @@ class AccountData extends Sync implements SyncInterface {
                 throw new \Exception("Local item needs to have database IMP|MEKIT!");
         }
         return $answer;
-    }
-
-    /**
-     * @param string $msg
-     */
-    protected function log($msg) {
-        call_user_func($this->logger, $msg);
     }
 }
