@@ -57,10 +57,10 @@ class ContactCache extends CacheDb {
             $this->db->exec($sql);
             $this->db->exec("CREATE UNIQUE INDEX ID ON " . $this->dataIdentifier . " (id ASC)");
 //            $this->db->exec("CREATE INDEX CRMID ON " . $this->dataIdentifier . " (crm_id ASC)");
-            $this->db->exec("CREATE INDEX FIRSTNAME ON " . $this->dataIdentifier . " (first_name ASC)");
-            $this->db->exec("CREATE INDEX LASTNAME ON " . $this->dataIdentifier . " (last_name ASC)");
-            $this->db->exec("CREATE INDEX EMAIL ON " . $this->dataIdentifier . " (email ASC)");
-            $this->db->exec("CREATE INDEX MOBILE ON " . $this->dataIdentifier . " (phone_mobile ASC)");
+            $this->db->exec("CREATE INDEX FN ON " . $this->dataIdentifier . " (first_name ASC)");
+            $this->db->exec("CREATE INDEX LN ON " . $this->dataIdentifier . " (last_name ASC)");
+            $this->db->exec("CREATE INDEX EM ON " . $this->dataIdentifier . " (email ASC)");
+            $this->db->exec("CREATE INDEX MOB ON " . $this->dataIdentifier . " (phone_mobile ASC)");
         }
     }
 }

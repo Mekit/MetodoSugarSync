@@ -49,16 +49,22 @@ class CacheDb extends SqliteDb {
                 $filterIndex = 1;
                 $maxFilters = count($filter);
                 foreach (array_keys($filter) as $filterParam) {
-                    $query .= " " . $filterParam . ' = :' . $filterParam . ($filterIndex < $maxFilters ? " AND" : "");
+                    $query .= ' ' . $filterParam . ' = :' . $filterParam . ($filterIndex < $maxFilters ? " AND" : "");
                     $filterIndex++;
                 }
+                $this->log("\n\nQuery: " . $query);
                 $stmt = $this->db->prepare($query);
+
                 foreach ($filter as $filterParam => $filterValue) {
                     $stmt->bindParam(':' . $filterParam, $filterValue, \PDO::PARAM_STR);
+                    $this->log("Binding(" . $filterParam . "): " . $filterValue);
                 }
+
                 if ($stmt->execute()) {
                     $answer = $stmt->fetchAll(\PDO::FETCH_OBJ);
                 }
+                $this->log("ERR: " . $stmt->errorCode());
+
             }
         } catch(\PDOException $e) {
             $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
