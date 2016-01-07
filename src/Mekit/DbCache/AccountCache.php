@@ -14,7 +14,6 @@ class AccountCache extends CacheDb {
      */
     public function __construct($dataIdentifier, $logger) {
         parent::__construct($dataIdentifier, $logger);
-        $this->setupDatabase();
     }
 
     public function invalidateAll() {

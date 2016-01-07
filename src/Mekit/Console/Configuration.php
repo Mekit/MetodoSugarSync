@@ -53,6 +53,7 @@ class Configuration {
         switch ($serverType) {
             case "MSSQL":
                 $connection = new \PDO("odbc:$serverName", "$username", "$password");
+                $connection->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
                 break;
             default:
                 throw new \LogicException("The server type($serverType) for $databaseName is not recognized!");

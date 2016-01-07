@@ -48,23 +48,19 @@ class CacheDb extends SqliteDb {
                 $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";
                 $filterIndex = 1;
                 $maxFilters = count($filter);
-                foreach (array_keys($filter) as $filterParam) {
-                    $query .= ' ' . $filterParam . ' = :' . $filterParam . ($filterIndex < $maxFilters ? " AND" : "");
+                $parameters = [];
+                foreach ($filter as $columnName => $columnValue) {
+                    $paramName = ':' . $columnName;
+                    $query .= ' ' . $columnName . ' = ' . $paramName . ($filterIndex < $maxFilters ? " AND" : "");
+                    $parameters[$paramName] = $columnValue;
                     $filterIndex++;
                 }
-                $this->log("\n\nQuery: " . $query);
+                //$this->log("Query: " . $query . " - Params: " . json_encode($parameters));
                 $stmt = $this->db->prepare($query);
 
-                foreach ($filter as $filterParam => $filterValue) {
-                    $stmt->bindParam(':' . $filterParam, $filterValue, \PDO::PARAM_STR);
-                    $this->log("Binding(" . $filterParam . "): " . $filterValue);
-                }
-
-                if ($stmt->execute()) {
+                if ($stmt->execute($parameters)) {
                     $answer = $stmt->fetchAll(\PDO::FETCH_OBJ);
                 }
-                $this->log("ERR: " . $stmt->errorCode());
-
             }
         } catch(\PDOException $e) {
             $this->log(__CLASS__ . " - load item error: " . $e->getMessage());

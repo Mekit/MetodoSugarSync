@@ -25,6 +25,7 @@ class SqliteDb {
         $this->logger = $logger;
         $cfg = Configuration::getConfiguration();
         $this->dbPath = $cfg["global"]["temporary_path"] . '/' . $this->dataIdentifier . '.sqlite';
+        $this->log("Initialized Cache($dataIdentifier): " . $this->dbPath);
         $this->db = new \PDO('sqlite:' . $this->dbPath);
         $this->db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
     }

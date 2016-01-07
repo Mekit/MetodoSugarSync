@@ -72,12 +72,11 @@ class ContactData extends Sync implements SyncInterface {
         $this->counters["cache"]["index"] = 0;
         foreach (["MEKIT", "IMP"] as $database) {
             while ($localItem = $this->getNextLocalItem($database)) {
+//                if ($this->counters["cache"]["index"] == 300) {
+//                    break;
+//                }
                 $this->counters["cache"]["index"]++;
                 $this->saveLocalItemInCache($localItem);
-                //$this->log("ITEM(" . $this->counters["cache"]["index"] . ") - " . json_encode($localItem));
-                if ($this->counters["cache"]["index"] > 50) {
-                    break;
-                }
             }
         }
     }
@@ -98,43 +97,21 @@ class ContactData extends Sync implements SyncInterface {
         /** @var array $warnings */
         $warnings = [];
 
-        //control by: FIRSTNAME + LASTNAME
-        if (!empty($localItem->first_name) && !empty($localItem->last_name)) {
-            $filter = [
-                'first_name' => $localItem->first_name,
-                'last_name' => $localItem->last_name,
-            ];
-            $candidates = $this->cacheDb->loadItems($filter);
-            if ($candidates) {
-                if (count($candidates) > 1) {
-                    $warnings[] = "-----------------------------------------------------------------------------------------";
-                    $warnings[] = "MULTIPLE CACHED ITEMS FOUND FOR FIRSTNAME + LASTNAME COMBINATION["
-                                  . $localItem->database . "]: "
-                                  . $localItem->first_name
-                                  . " "
-                                  . $localItem->last_name;
-                }
-                $candidate = $candidates[0];
-                $cachedItem = $candidate;
-                $operation = "update";
-                $identifiedBy = "FIRSTNAME + LASTNAME";
-            }
-        }
-
         //control by: CellPhone + (firstName or lastName)
         if (!$operation && !empty($localItem->phone_mobile)
-            && (!empty($localItem->first_name) || !empty($localItem->last_name))
+            /*&& (!empty($localItem->first_name) || !empty($localItem->last_name))*/
         ) {
 
             $filter = [
-                'phone_mobile' => $localItem->phone_mobile,
+                'phone_mobile' => $localItem->phone_mobile
             ];
+            /*
             if (!empty($localItem->first_name)) {
                 $filter['first_name'] = $localItem->first_name;
             }
             if (!empty($localItem->last_name)) {
                 $filter['last_name'] = $localItem->last_name;
-            }
+            }*/
             $candidates = $this->cacheDb->loadItems($filter);
             if ($candidates) {
                 if (count($candidates) > 1) {
@@ -156,18 +133,18 @@ class ContactData extends Sync implements SyncInterface {
 
         //control by: Email + (firstName or lastName)
         if (!$operation && !empty($localItem->email)
-            && (!empty($localItem->first_name) || !empty($localItem->last_name))
+            /*&& (!empty($localItem->first_name) || !empty($localItem->last_name))*/
         ) {
-
             $filter = [
-                'email' => $localItem->email,
+                'email' => $localItem->email
             ];
+            /*
             if (!empty($localItem->first_name)) {
                 $filter['first_name'] = $localItem->first_name;
             }
             if (!empty($localItem->last_name)) {
                 $filter['last_name'] = $localItem->last_name;
-            }
+            }*/
             $candidates = $this->cacheDb->loadItems($filter);
             if ($candidates) {
                 if (count($candidates) > 1) {
@@ -184,6 +161,29 @@ class ContactData extends Sync implements SyncInterface {
                 $cachedItem = $candidate;
                 $operation = "update";
                 $identifiedBy = "EMAIL + FIRSTNAME/LASTNAME";
+            }
+        }
+
+        //control by: FIRSTNAME + LASTNAME
+        if (!empty($localItem->first_name) && !empty($localItem->last_name)) {
+            $filter = [
+                'first_name' => $localItem->first_name,
+                'last_name' => $localItem->last_name
+            ];
+            $candidates = $this->cacheDb->loadItems($filter);
+            if ($candidates) {
+                if (count($candidates) > 1) {
+                    $warnings[] = "-----------------------------------------------------------------------------------------";
+                    $warnings[] = "MULTIPLE CACHED ITEMS FOUND FOR FIRSTNAME + LASTNAME COMBINATION["
+                                  . $localItem->database . "]: "
+                                  . $localItem->first_name
+                                  . " "
+                                  . $localItem->last_name;
+                }
+                $candidate = $candidates[0];
+                $cachedItem = $candidate;
+                $operation = "update";
+                $identifiedBy = "FIRSTNAME + LASTNAME";
             }
         }
 
@@ -208,6 +208,9 @@ class ContactData extends Sync implements SyncInterface {
             $cacheUpdateItem = new \stdClass();
             $cacheUpdateItem->id = md5($localItem->first_name . $localItem->last_name . "-" . microtime(TRUE));
 
+            $cacheUpdateItem->email = json_encode([]);
+            $cacheUpdateItem->phone_mobile = json_encode([]);
+
             $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
             $cacheUpdateItem->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
 
@@ -220,10 +223,19 @@ class ContactData extends Sync implements SyncInterface {
         $cacheUpdateItem->last_name = $localItem->last_name;
 
         if (!empty($localItem->phone_mobile)) {
-            $cacheUpdateItem->phone_mobile = $localItem->phone_mobile;
+            $mobiles = json_decode($cacheUpdateItem->phone_mobile);
+            if (!in_array($localItem->phone_mobile, $mobiles)) {
+                $mobiles[] = $localItem->phone_mobile;
+                $cacheUpdateItem->phone_mobile = json_encode($mobiles);
+            }
         }
+
         if (!empty($localItem->email)) {
-            $cacheUpdateItem->email = $localItem->email;
+            $emails = json_decode($cacheUpdateItem->email);
+            if (!in_array($localItem->email, $emails)) {
+                $emails[] = $localItem->email;
+                $cacheUpdateItem->email = json_encode($emails);
+            }
         }
 
         //DECIDE OPERATION(better to keep this off for now)
@@ -288,11 +300,21 @@ class ContactData extends Sync implements SyncInterface {
                 TP.DATAMODIFICA AS DataDiModifica
                 FROM [$database].[dbo].[TABELLAPERSONALE] AS TP
                 INNER JOIN [$database].[dbo].[TabellaRuoli] AS TR ON TP.CODRUOLO = TR.Codice
+                WHERE (
+                (NULLIF(TP.NOME, '') IS NOT NULL AND NULLIF(TP.COGNOME, '') IS NOT NULL) OR
+                NULLIF(TP.EMAIL, '') IS NOT NULL OR
+                NULLIF(TP.CELL, '') IS NOT NULL
+                )
                 ORDER BY TP.DATAMODIFICA ASC;
                 ";
-
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
+
+
+//            if(!empty($this->localItemStatement->errorInfo())) {
+//                throw new \Exception("MSSQL(ERR): " . json_encode($this->localItemStatement->errorInfo()));
+//            }
+
         }
         $item = $this->localItemStatement->fetch(\PDO::FETCH_OBJ);
         if ($item) {
@@ -301,13 +323,14 @@ class ContactData extends Sync implements SyncInterface {
             $item->last_name = strtoupper(trim($item->last_name));
             $item->salutation = $this->getSalutationFromCode((int) $item->salutation);
             $item->email = strtolower(trim($item->email));
-            $item->phone_mobile = trim($item->phone_mobile);
-            $item->phone_work = trim($item->phone_work);
-            $item->phone_home = trim($item->phone_home);
-            $item->phone_fax = trim($item->phone_fax);
+            $item->phone_mobile = $this->normalizePhoneNumber($item->phone_mobile);
+            $item->phone_work = $this->normalizePhoneNumber($item->phone_work);
+            $item->phone_home = $this->normalizePhoneNumber($item->phone_home);
+            $item->phone_fax = $this->normalizePhoneNumber($item->phone_fax);
             $item->title = trim($item->title);
             $item->ruolo = trim($item->ruolo);
-            //normalization
+
+            //normalization (set RUOLO as last_name if both first_name and last_name fields are empty)
             if (empty($item->first_name) && empty($item->last_name)) {
                 $item->last_name = $item->ruolo;
             }
@@ -317,6 +340,17 @@ class ContactData extends Sync implements SyncInterface {
             $this->localItemStatement = NULL;
         }
         return $item;
+    }
+
+
+    /**
+     * @param string $phoneNumber
+     * @return string mixed
+     */
+    protected function normalizePhoneNumber($phoneNumber) {
+        $answer = trim((string) $phoneNumber);
+        $answer = preg_replace('#[^0-9]#', '', $answer);
+        return $answer;
     }
 
     /**
