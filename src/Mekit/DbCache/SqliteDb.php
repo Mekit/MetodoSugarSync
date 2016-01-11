@@ -23,8 +23,17 @@ class SqliteDb {
     public function __construct($dataIdentifier, $logger) {
         $this->dataIdentifier = $dataIdentifier;
         $this->logger = $logger;
+        $dbName = $dataIdentifier;
+        /*
+         * If $dataIdentifier is like Contact_codes - then the name of the database will be the first part
+         * before the underscore("_")
+         * */
+        if (strpos($dbName, "_") !== FALSE) {
+            $parts = explode("_", $dbName);
+            $dbName = $parts[0];
+        }
         $cfg = Configuration::getConfiguration();
-        $this->dbPath = $cfg["global"]["temporary_path"] . '/' . $this->dataIdentifier . '.sqlite';
+        $this->dbPath = $cfg["global"]["temporary_path"] . '/' . $dbName . '.sqlite';
         $this->log("Initialized Cache($dataIdentifier): " . $this->dbPath);
         $this->db = new \PDO('sqlite:' . $this->dbPath);
         $this->db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);

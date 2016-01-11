@@ -8,6 +8,9 @@ class CacheDb extends SqliteDb {
     /** @var \PDOStatement */
     private $itemWalker = NULL;
 
+    /** @var array */
+    protected $columns = [];
+
 
     /**
      * @param string $dataIdentifier
@@ -69,12 +72,13 @@ class CacheDb extends SqliteDb {
     }
 
     /**
-     * @param $item
+     * @param \stdClass $item
      * @return bool
      */
     public function addItem($item) {
         $answer = FALSE;
         try {
+            $item = $this->cleanUpItem($item);
             $columns = array_keys(get_object_vars($item));
             $query = "INSERT INTO " . $this->dataIdentifier . " "
                      . "(" . implode(",", $columns) . ")"
@@ -82,33 +86,36 @@ class CacheDb extends SqliteDb {
                      . "(";
             $columnIndex = 1;
             $maxColumns = count($columns);
-            foreach ($columns as $column) {
-                $query .= ":" . $column . ($columnIndex < $maxColumns ? ", " : "");
+            $parameters = [];
+            foreach (get_object_vars($item) as $columnName => $columnValue) {
+                $paramName = ':' . $columnName;
+                $query .= $paramName . ($columnIndex < $maxColumns ? ", " : "");
+                $parameters[$paramName] = $columnValue;
                 $columnIndex++;
             }
             $query .= ")";
-
             $stmt = $this->db->prepare($query);
-            foreach ($columns as $column) {
-                if (isset($item->$column)) {
-                    $stmt->bindParam(':' . $column, $item->$column);
-                }
-            }
-            $stmt->execute();
-            $answer = TRUE;
+            $answer = $stmt->execute($parameters);
         } catch(\PDOException $e) {
-            $this->log(__CLASS__ . " - add item error: " . $e->getMessage());
+            $this->log(__CLASS__ . " - item insert error: " . $e->getMessage());
+            if (isset($query)) {
+                $this->log(__CLASS__ . " - SQL: " . $query);
+            }
+            if (isset($parameters)) {
+                $this->log(__CLASS__ . " - PARAMETERS: " . $parameters);
+            }
         }
         return $answer;
     }
 
     /**
-     * @param $item
+     * @param \stdClass $item
      * @return bool
      */
     public function updateItem($item) {
         $answer = FALSE;
         try {
+            $item = $this->cleanUpItem($item);
             $itemId = $item->id;
             unset($item->id);
             $columns = array_keys(get_object_vars($item));
@@ -116,24 +123,42 @@ class CacheDb extends SqliteDb {
             $query = "UPDATE " . $this->dataIdentifier . " SET ";
             $columnIndex = 1;
             $maxColumns = count($columns);
-            foreach ($columns as $column) {
-                $query .= $column . " = :" . $column . ($columnIndex < $maxColumns ? ", " : "");
+            $parameters = [];
+            foreach (get_object_vars($item) as $columnName => $columnValue) {
+                $paramName = ':' . $columnName;
+                $query .= $columnName . " = " . $paramName . ($columnIndex < $maxColumns ? ", " : "");
+                $parameters[$paramName] = $columnValue;
                 $columnIndex++;
             }
+            //ID
             $query .= " WHERE id = :id";
+            $parameters[":id"] = $itemId;
+            //
             $stmt = $this->db->prepare($query);
-            foreach ($columns as $column) {
-                if (isset($item->$column)) {
-                    $stmt->bindParam(':' . $column, $item->$column);
-                }
-            }
-            $stmt->bindParam(':id', $itemId);
-            $answer = $stmt->execute();
-            if (!$answer) {
-                $this->log("NOT UPDATED!");
-            }
+            $answer = $stmt->execute($parameters);
         } catch(\PDOException $e) {
-            $this->log(__CLASS__ . " - update item error: " . $e->getMessage());
+            $this->log(__CLASS__ . " - item update error: " . $e->getMessage());
+            if (isset($query)) {
+                $this->log(__CLASS__ . " - SQL: " . $query);
+            }
+            if (isset($parameters)) {
+                $this->log(__CLASS__ . " - PARAMETERS: " . $parameters);
+            }
+        }
+        return $answer;
+    }
+
+    /**
+     * remove from item any property not defined in columns
+     * @param \stdClass $item
+     * @return \stdClass
+     */
+    protected function cleanUpItem($item) {
+        $answer = clone($item);
+        foreach (array_keys(get_object_vars($answer)) as $colName) {
+            if (!array_key_exists($colName, $this->columns)) {
+                unset($answer->$colName);
+            }
         }
         return $answer;
     }
@@ -145,15 +170,43 @@ class CacheDb extends SqliteDb {
         $statement->execute();
     }
 
+
     public function invalidateAll() {
         throw new \Exception(__CLASS__ . ": Method invalidateAll must be implemented in extending class!");
     }
 
-
     /**
-     * @throws \Exception
+     * Set up database table from $columns array
      */
     protected function setupDatabase() {
-        throw new \Exception(__CLASS__ . ": Method setupDatabase must be implemented in extending class!");
+        $tableName = $this->dataIdentifier;
+        $statement = $this->db->prepare(
+            "SELECT COUNT(*) AS HASTABLE FROM sqlite_master WHERE type='table' AND name='" . $tableName . "'"
+        );
+        $statement->execute();
+        $tabletest = $statement->fetchObject();
+        $hasTable = $tabletest->HASTABLE == 1;
+        if (!$hasTable) {
+            //CREATE THE TABLE
+            $sql = "CREATE TABLE " . $tableName . " (";
+            $colIndex = 0;
+            foreach ($this->columns as $colName => $colData) {
+                $sql .= $colIndex != 0 ? ", " : "";
+                $sql .= $colName . " " . $colData["type"];
+                $colIndex++;
+            }
+            $sql .= ")";
+            $this->log("creating cache table($tableName): " . $sql);
+            $this->db->exec($sql);
+            //CREATE INDICES
+            foreach ($this->columns as $colName => $colData) {
+                if (isset($colData["index"]) && $colData["index"]) {
+                    $indexType = isset($colData["unique"]) && $colData["unique"] ? "UNIQUE INDEX" : "INDEX";
+                    $indexName = "I_" . md5($colName . microtime(TRUE));
+                    $sql = "CREATE $indexType $indexName ON $tableName ($colName ASC)";
+                    $this->db->exec($sql);
+                }
+            }
+        }
     }
 }
