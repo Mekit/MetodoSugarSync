@@ -13,7 +13,7 @@ class ContactCodesCache extends CacheDb {
         'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
         'contact_id' => ['type' => 'TEXT', 'index' => TRUE],
         'database' => ['type' => 'TEXT', 'index' => TRUE],
-        'metodo_contact_code' => ['type' => 'TEXT', 'index' => FALSE],
+        'metodo_contact_code' => ['type' => 'TEXT', 'index' => TRUE],
         'metodo_code_company' => ['type' => 'TEXT', 'index' => FALSE],
         'metodo_code_cf' => ['type' => 'TEXT', 'index' => TRUE],
         'metodo_role' => ['type' => 'TEXT', 'index' => FALSE]

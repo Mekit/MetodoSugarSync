@@ -76,9 +76,9 @@ class ContactData extends Sync implements SyncInterface {
         $this->counters["cache"]["index"] = 0;
         foreach (["MEKIT", "IMP"] as $database) {
             while ($localItem = $this->getNextLocalItem($database)) {
-                if ($this->counters["cache"]["index"] == 1) {
-                    break;
-                }
+//                if ($this->counters["cache"]["index"] == 100) {
+//                    break;
+//                }
                 $this->counters["cache"]["index"]++;
                 $this->saveLocalItemInCache($localItem);
             }
@@ -107,6 +107,11 @@ class ContactData extends Sync implements SyncInterface {
 
         /** @var string $itemDb IMP|MEKIT */
         $itemDb = $localItem->database;
+
+        $this->log(
+            "-----------------------------------------------------------------------------------------"
+            . $this->counters["cache"]["index"]
+        );
 
 
         //get contact code
@@ -151,39 +156,107 @@ class ContactData extends Sync implements SyncInterface {
             $operations["code"] = 'insert';
         }
 
+        //search by: mobile phone
         if (!$cachedItemContact) {
-            //search by: mobile phone
             if (!empty($localItem->phone_mobile)) {
                 $filter = [
                     'phone_mobile' => $localItem->phone_mobile
                 ];
                 $candidates = $this->contactCacheDb->loadItems($filter);
                 if ($candidates) {
-                    $this->log("FOUND CANDIDATES FOR MOBILE: " . json_encode($candidates));
+
+                    //control if we have a corresponding ClienteDiFatturazione for any of the candidates
+                    foreach ($candidates as $candidate) {
+                        $filter = [
+                            'contact_id' => $candidate->id,
+                            'database' => $itemDb,
+                            'metodo_code_cf' => $localItem->clienteDiFatturazione
+                        ];
+                        $codeCandidates = $this->contactCodesCacheDb->loadItems($filter);
+                        if ($codeCandidates && count($codeCandidates)) {
+                            $cachedItemContact = $candidate;
+                            $operations["contact"] = 'update';
+                            $cachedItemContactCodes->contact_id = $cachedItemContact->id;
+                            break;
+                        }
+                    }
+
+                    //control if any of the candidates is identifiable by email
+                    foreach ($candidates as $candidate) {
+                        $emails = json_decode($candidate->email);
+                        if (in_array($localItem->email, $emails)) {
+                            $cachedItemContact = $candidate;
+                            $operations["contact"] = 'update';
+                            $cachedItemContactCodes->contact_id = $cachedItemContact->id;
+                            break;
+                        }
+                    }
+
+                    /*
+                    $this->log("MOBILE CANDIDATES FOUND! " . json_encode($candidates));
+                    $this->log("LOCAL: " . json_encode($localItem));
+                    $this->log("CODES: " . json_encode($cachedItemContactCodes));
+                    $this->log("OPERATIONS: " . json_encode($operations));
+                    die("K");
+                    */
                 }
 
+                //contact has an unregistered mobile
+                if (!$cachedItemContact) {
+                    $cachedItemContact = $this->generateNewContactObject($localItem);
+                    $operations["contact"] = 'insert';
+                    $cachedItemContactCodes->contact_id = $cachedItemContact->id;
+                }
+            }
+        }
+
+        //search by: first_name or last_name or both
+        if (!$cachedItemContact) {
+
+            $filter = [];
+            if (!empty($localItem->first_name)) {
+                $filter["first_name"] = $localItem->first_name;
+            }
+            if (!empty($localItem->last_name)) {
+                $filter["last_name"] = $localItem->last_name;
+            }
+            $candidates = $this->contactCacheDb->loadItems($filter);
+            if ($candidates) {
+
+                //control if we have a corresponding ClienteDiFatturazione for any of the candidates
+                foreach ($candidates as $candidate) {
+                    $filter = [
+                        'contact_id' => $candidate->id,
+                        'database' => $itemDb,
+                        'metodo_code_cf' => $localItem->clienteDiFatturazione
+                    ];
+                    $codeCandidates = $this->contactCodesCacheDb->loadItems($filter);
+                    if ($codeCandidates && count($codeCandidates)) {
+                        $cachedItemContact = $candidate;
+                        $operations["contact"] = 'update';
+                        $cachedItemContactCodes->contact_id = $cachedItemContact->id;
+                        break;
+                    }
+                }
+                /*
+                $this->log("NAME CANDIDATES FOUND! " . json_encode($candidates));
+                $this->log("LOCAL: " . json_encode($localItem));
+                $this->log("CODES: " . json_encode($cachedItemContactCodes));
+                $this->log("OPERATIONS: " . json_encode($operations));
+                die("K");
+                */
             }
         }
 
 
-        //all search failed - create new
+        //all search failed - create new contact
         if (!$cachedItemContact) {
-            $cachedItemContact = new \stdClass();
-            $contactId = md5("contactId-" . microtime(TRUE));
-            $cachedItemContact->id = $contactId;
-            $cachedItemContactCodes->contact_id = $contactId;
-            //
-            $cachedItemContact->email = '[]';
-            //
-            $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
-            $cachedItemContact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
-
-            $crmLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
-            $cachedItemContact->crm_last_update_time_c = $crmLastUpdateTime->format("c");
-
+            $cachedItemContact = $this->generateNewContactObject($localItem);
             $operations["contact"] = 'insert';
+            $cachedItemContactCodes->contact_id = $cachedItemContact->id;
         }
 
+        //update contact data
         $cachedItemContact->first_name = $localItem->first_name;
         $cachedItemContact->last_name = $localItem->last_name;
 
@@ -208,9 +281,28 @@ class ContactData extends Sync implements SyncInterface {
         $cachedItemContact->title = $localItem->title;
 
 
+        //INSERT / UPDATE
         if (!isset($operations["code"])) {
             throw new \Exception("operations[code] NOT SET!");
         }
+        if (!isset($operations["contact"])) {
+            throw new \Exception("operations[contact] NOT SET!");
+        }
+
+        //LOG
+        $this->log("[" . $itemDb . "][" . json_encode($operations) . "][$identifiedBy]:");
+        $this->log("LOCAL: " . json_encode($localItem));
+        $this->log("CODES: " . json_encode($cachedItemContactCodes));
+        $this->log("CONTACT: " . json_encode($cachedItemContact));
+
+        if (!empty($warnings)) {
+            foreach ($warnings as $warning) {
+                $this->log("WARNING: " . $warning);
+            }
+        }
+
+
+        //CODES
         switch ($operations["code"]) {
             case "insert":
                 $this->contactCodesCacheDb->addItem($cachedItemContactCodes);
@@ -224,10 +316,7 @@ class ContactData extends Sync implements SyncInterface {
                 throw new \Exception("Code operation(" . $operations["code"] . ") is not implemented!");
         }
 
-
-        if (!isset($operations["contact"])) {
-            throw new \Exception("operations[contact] NOT SET!");
-        }
+        //CONTACT
         switch ($operations["contact"]) {
             case "insert":
                 $this->contactCacheDb->addItem($cachedItemContact);
@@ -241,6 +330,41 @@ class ContactData extends Sync implements SyncInterface {
                 throw new \Exception("Code operation(" . $operations["contact"] . ") is not implemented!");
         }
     }
+
+
+    /**
+     * @param \stdClass $localItem
+     * @return \stdClass
+     */
+    protected function generateNewContactObject($localItem) {
+        $contact = new \stdClass();
+        $contact->id = md5(json_encode($localItem) . microtime(TRUE));
+        $contact->email = '[]';
+        //
+        $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+        $contact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+        //
+        $crmLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+        $contact->crm_last_update_time_c = $crmLastUpdateTime->format("c");
+        return $contact;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * @param \stdClass $localItem
