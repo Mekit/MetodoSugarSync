@@ -61,6 +61,7 @@ class ContactData extends Sync implements SyncInterface {
 
         if (isset($options["update-cache"]) && $options["update-cache"]) {
             $this->updateLocalCache();
+            $this->cleanupLocalCache();
         }
 
         if (isset($options["update-remote"]) && $options["update-remote"]) {
@@ -69,20 +70,34 @@ class ContactData extends Sync implements SyncInterface {
     }
 
     /**
-     *
+     * get data from Metodo and store it in local cache
      */
     protected function updateLocalCache() {
         $this->log("updating local cache...");
         $this->counters["cache"]["index"] = 0;
         foreach (["MEKIT", "IMP"] as $database) {
             while ($localItem = $this->getNextLocalItem($database)) {
-//                if ($this->counters["cache"]["index"] == 100) {
-//                    break;
-//                }
+                /*
+                if ($this->counters["cache"]["index"] == 100) {
+                    break;
+                }*/
                 $this->counters["cache"]["index"]++;
                 $this->saveLocalItemInCache($localItem);
             }
         }
+    }
+
+    /**
+     * check and remove:
+     * 1) contacts without codes:
+     * SELECT C.id AS ORPHAN FROM Contact AS C LEFT OUTER JOIN Contact_Codes AS CC ON C.id = CC.contact_id WHERE CC.id IS NULL;
+     *
+     * 2) codes without corresponding contact:
+     * SELECT CC.id AS ORPHAN FROM Contact_Codes AS CC LEFT OUTER JOIN Contact AS C ON CC.contact_id = C.id WHERE C.id IS NULL;
+     *
+     */
+    protected function cleanupLocalCache() {
+
     }
 
     /**
@@ -279,18 +294,23 @@ class ContactData extends Sync implements SyncInterface {
         $updateItemContact->email =
             $this->addElementToJsonData($updateItemContact->email, NULL, NULL, $localItem->email);
 
-
         //add other data on item only if localData is newer that cached data
         $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
         $updateItemLastUpdateTime = new \DateTime($updateItemContact->metodo_last_update_time_c);
+
         if ($metodoLastUpdateTime > $updateItemLastUpdateTime) {
             $updateItemContact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
             if (!empty($localItem->first_name)) {
-                $updateItemContact->first_name = $localItem->first_name;
+                if (empty($updateItemContact->first_name)) {
+                    $updateItemContact->first_name = $localItem->first_name;
+                }
             }
             if (!empty($localItem->last_name)) {
-                $updateItemContact->last_name = $localItem->last_name;
+                if (empty($updateItemContact->last_name)) {
+                    $updateItemContact->last_name = $localItem->last_name;
+                }
             }
+
             if (!empty($localItem->salutation)) {
                 $updateItemContact->salutation = $localItem->salutation;
             }
@@ -318,18 +338,10 @@ class ContactData extends Sync implements SyncInterface {
         $operations["contact"] = ($cachedItemContact == $updateItemContact) ? "skip" : $operations["contact"];
 
 
-        //INSERT / UPDATE
-        if (!isset($operations["code"])) {
-            throw new \Exception("operations[code] NOT SET!");
-        }
-        if (!isset($operations["contact"])) {
-            throw new \Exception("operations[contact] NOT SET!");
-        }
-
         //LOG
         if ($operations["contact"] != "skip") {
             $this->log("[" . $itemDb . "][" . json_encode($operations) . "][$identifiedBy]:");
-            //$this->log("LOCAL: " . json_encode($localItem));
+            $this->log("LOCAL: " . json_encode($localItem));
             //$this->log("CODES: " . json_encode($cachedItemContactCodes));
             $this->log("CONTACT(C): " . json_encode($cachedItemContact));
             $this->log("CONTACT(U): " . json_encode($updateItemContact));
@@ -341,9 +353,19 @@ class ContactData extends Sync implements SyncInterface {
             }
         }
 
+        //CHECK
+        if (!isset($operations["code"])) {
+            throw new \Exception("operations[code] NOT SET!");
+        }
+        if (!isset($operations["contact"])) {
+            throw new \Exception("operations[contact] NOT SET!");
+        }
+        if (empty($updateItemContact->first_name) && empty($updateItemContact->last_name)) {
+            throw new \Exception("Both first and last names are empty!");
+        }
 
 
-        //CODES
+        //INSERT / UPDATE CODES
         switch ($operations["code"]) {
             case "insert":
                 $this->contactCodesCacheDb->addItem($updateItemContactCodes);
@@ -357,7 +379,7 @@ class ContactData extends Sync implements SyncInterface {
                 throw new \Exception("Code operation(" . $operations["code"] . ") is not implemented!");
         }
 
-        //CONTACT
+        //INSERT / UPDATE CONTACT
         switch ($operations["contact"]) {
             case "insert":
                 $this->contactCacheDb->addItem($updateItemContact);
@@ -382,11 +404,15 @@ class ContactData extends Sync implements SyncInterface {
         $contact->id = md5(json_encode($localItem) . microtime(TRUE));
         $contact->email = '[]';
         //
-        $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
-        $contact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+        $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
         //
-        $crmLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
-        $contact->crm_last_update_time_c = $crmLastUpdateTime->format("c");
+        //$metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+        //$contact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+        $contact->metodo_last_update_time_c = $oldDate->format("c");
+        //
+        //$crmLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+        //$contact->crm_last_update_time_c = $crmLastUpdateTime->format("c");
+        $contact->crm_last_update_time_c = $oldDate->format("c");
         return $contact;
     }
 
@@ -394,6 +420,8 @@ class ContactData extends Sync implements SyncInterface {
     /**
      * @param string $database IMP|MEKIT
      * @return bool|\stdClass
+     *
+     * @todo: importare anche quelli senza ruolo - come "RESP. CANTIERE"
      */
     protected function getNextLocalItem($database) {
         if (!$this->localItemStatement) {
@@ -409,13 +437,13 @@ class ContactData extends Sync implements SyncInterface {
                 TP.TELCASA AS phone_home,
                 TP.FAX AS phone_fax,
                 TP.POSIZIONE AS title,
-                TR.Descrizione AS role,
+                CASE WHEN NULLIF(TR.Descrizione, '') IS NOT NULL THEN TR.Descrizione ELSE 'NO-ROLE' END AS role,
                 TP.RIFCODCONTO AS codiceMetodoAzienda,
                 ACFR.CODCONTOFATT AS clienteDiFatturazione,
                 CONCAT(TP.RIFCODCONTO COLLATE DATABASE_DEFAULT, '-' COLLATE DATABASE_DEFAULT, TP.CODICE COLLATE DATABASE_DEFAULT) AS metodoCombinedCode,
                 TP.DATAMODIFICA AS DataDiModifica
                 FROM [$database].[dbo].[TABELLAPERSONALE] AS TP
-                INNER JOIN [$database].[dbo].[TabellaRuoli] AS TR ON TP.CODRUOLO = TR.Codice
+                LEFT JOIN [$database].[dbo].[TabellaRuoli] AS TR ON TP.CODRUOLO = TR.Codice
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON TP.RIFCODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                 WHERE (
                 (NULLIF(TP.NOME, '') IS NOT NULL AND NULLIF(TP.COGNOME, '') IS NOT NULL) OR
