@@ -35,19 +35,27 @@ class SyncAccountsCommand extends Command implements CommandInterface {
                 ),
                 new InputOption(
                     'delete-cache', '', InputOption::VALUE_NONE,
-                    'Throw cache away?'
+                    'Delete all cached data.'
                 ),
                 new InputOption(
                     'invalidate-cache', '', InputOption::VALUE_NONE,
-                    'Reset timestamps on cache so that updates will occur again?'
+                    'Reset timestamps on local and remote cache so that updates will occur again.'
+                ),
+                new InputOption(
+                    'invalidate-local-cache', '', InputOption::VALUE_NONE,
+                    'Reset timestamps on local cache so that updates will occur again.'
+                ),
+                new InputOption(
+                    'invalidate-remote-cache', '', InputOption::VALUE_NONE,
+                    'Reset timestamps on remote cache so that updates will occur again.'
                 ),
                 new InputOption(
                     'update-cache', NULL, InputOption::VALUE_NONE,
-                    'Update local cache?'
+                    'Update local cache.'
                 ),
                 new InputOption(
                     'update-remote', NULL, InputOption::VALUE_NONE,
-                    'Update remote?'
+                    'Update remote.'
                 ),
             ]
         );

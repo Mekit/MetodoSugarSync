@@ -24,9 +24,6 @@ class AccountData extends Sync implements SyncInterface {
     /** @var  AccountCache */
     protected $cacheDb;
 
-    /** @var string */
-    protected $dataIdentifier = 'Account';
-
     /** @var  \PDOStatement */
     protected $localItemStatement;
 
@@ -38,7 +35,7 @@ class AccountData extends Sync implements SyncInterface {
      */
     public function __construct($logger) {
         parent::__construct($logger);
-        $this->cacheDb = new AccountCache($this->dataIdentifier, $logger);
+        $this->cacheDb = new AccountCache('Account', $logger);
         $this->sugarCrmRest = new SugarCrmRest();
     }
 
@@ -52,7 +49,15 @@ class AccountData extends Sync implements SyncInterface {
         }
 
         if (isset($options["invalidate-cache"]) && $options["invalidate-cache"]) {
-            $this->cacheDb->invalidateAll();
+            $this->cacheDb->invalidateAll(TRUE, TRUE);
+        }
+
+        if (isset($options["invalidate-local-cache"]) && $options["invalidate-local-cache"]) {
+            $this->cacheDb->invalidateAll(TRUE, FALSE);
+        }
+
+        if (isset($options["invalidate-remote-cache"]) && $options["invalidate-remote-cache"]) {
+            $this->cacheDb->invalidateAll(FALSE, TRUE);
         }
 
         if (isset($options["update-cache"]) && $options["update-cache"]) {
@@ -83,6 +88,11 @@ class AccountData extends Sync implements SyncInterface {
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveRemoteItem($cacheItem);
             $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+            /*
+            $this->log("REMOTE: " . json_encode($remoteItem));
+            if($this->counters["remote"]["index"] > 1) {
+                break;
+            }*/
         }
     }
 
@@ -121,15 +131,23 @@ class AccountData extends Sync implements SyncInterface {
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
-        $this->log(
-            "-----------------------------------------------------------------------------------------"
-            . $this->counters["remote"]["index"]
-        );
+
 
         if ($metodoLastUpdate > $crmLastUpdate) {
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["remote"]["index"]
+            );
+
+            try {
+                $crm_id = $this->loadRemoteItemId($cacheItem);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
+                return $result;
+            }
 
             $syncItem = clone($cacheItem);
-            $crm_id = $this->loadRemoteItemId($cacheItem);
+
             //add payload to syncItem
             $payload = $this->getLocalItemPayload($cacheItem);
             if ($payload) {
@@ -154,6 +172,11 @@ class AccountData extends Sync implements SyncInterface {
             }
             //add special data
             $syncItem->profiling_c = FALSE;//"Da profilare"
+
+
+            $this->log("SYNCING CRM: " . json_encode($syncItem));
+
+
 
             //UPDATE
             if ($crm_id) {
@@ -191,7 +214,7 @@ class AccountData extends Sync implements SyncInterface {
             }
         }
         else {
-            $this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
+            //$this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
             //$this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
             //$this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
         }
@@ -247,14 +270,20 @@ class AccountData extends Sync implements SyncInterface {
                 "offset" => 0,
                 "fields" => "id",
             ];
-            try {
-                $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
-            } catch(SugarCrmRestException $e) {
-                //go ahead silently with false
-            }
+
+            $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
+
             if (isset($result) && isset($result->records)) {
                 if (count($result->records) > 1) {
                     //This should never happen!!!
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    $this->log("There is a multiple correspondence for requested codes!" . json_encode($filter));
+                    $this->log("RESULTS: " . json_encode($result->records));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
                     throw new \Exception(
                         "There is a multiple correspondence for requested codes!" . json_encode($filter)
                     );
@@ -455,6 +484,15 @@ class AccountData extends Sync implements SyncInterface {
             $cacheUpdateItem->codice_fiscale_c = $localItem->CodiceFiscale;
         }
 
+        //codice agente - moved under getLocalItemPayload
+//        if(!empty($localItem->CodiceAgente)) {
+//            if($localItem->database == "IMP") {
+//                $cacheUpdateItem->imp_agent_code_c = $localItem->CodiceAgente;
+//            } else if($localItem->database == "MEKIT") {
+//                $cacheUpdateItem->mekit_agent_code_c = $localItem->CodiceAgente;
+//            }
+//        }
+
         //DECIDE OPERATION(better to keep this off for now)
         $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
@@ -526,8 +564,10 @@ class AccountData extends Sync implements SyncInterface {
                     ACF.FAX AS phone_fax,
                     ACF.TELEX AS email,
                     ACF.INDIRIZZOINTERNET AS website,
-                    ACF.NOTE AS metodo_notes_" . strtolower($database) . "_c
+                    ACF.NOTE AS metodo_notes_" . strtolower($database) . "_c,
+                    ACFR.CODAGENTE1 AS " . strtolower($database) . "_agent_code_c
                     FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
+                    INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                     WHERE ACF.CODCONTO IN (" . implode(",", $metodoCodes) . ")
                     ";
                 $statement = $db->prepare($sql);
@@ -575,9 +615,9 @@ class AccountData extends Sync implements SyncInterface {
             }
 
             if (count($items) > 1) {
-                $this->log("-------------------------------------------------------------------------------------------------");
-                $this->log("MERGED MULTIPLE PAYLOAD ITEMS(SORTED BY DATE): " . json_encode($items));
-                $this->log("MERGE RESULT: " . json_encode($answer));
+//                $this->log("-------------------------------------------------------------------------------------------------");
+//                $this->log("MERGED MULTIPLE PAYLOAD ITEMS(SORTED BY DATE): " . json_encode($items));
+//                $this->log("MERGE RESULT: " . json_encode($answer));
             }
         }
         return $answer;
