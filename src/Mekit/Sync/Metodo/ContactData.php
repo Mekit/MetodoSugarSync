@@ -68,7 +68,7 @@ class ContactData extends Sync implements SyncInterface {
 
         if (isset($options["update-cache"]) && $options["update-cache"]) {
             $this->updateLocalCache();
-            $this->cleanupLocalCache();
+            $this->cleanupOrphansFromLocalCache();
         }
 
         if (isset($options["update-remote"]) && $options["update-remote"]) {
@@ -94,6 +94,26 @@ class ContactData extends Sync implements SyncInterface {
         }
     }
 
+
+    protected function updateRemoteFromCache() {
+        $this->log("updating remote...");
+        /*
+        $this->cacheDb->resetItemWalker();
+        $this->counters["remote"]["index"] = 0;
+        while ($cacheItem = $this->cacheDb->getNextItem()) {
+            $this->counters["remote"]["index"]++;
+            //$remoteItem = $this->saveRemoteItem($cacheItem);
+            //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+
+            $this->log("REMOTE: " . json_encode($remoteItem));
+            if($this->counters["remote"]["index"] > 1) {
+                break;
+            }
+        }
+        */
+    }
+
+
     /**
      * check and remove:
      * 1) contacts without codes:
@@ -103,8 +123,47 @@ class ContactData extends Sync implements SyncInterface {
      * SELECT CC.id AS ORPHAN FROM Contact_Codes AS CC LEFT OUTER JOIN Contact AS C ON CC.contact_id = C.id WHERE C.id IS NULL;
      *
      */
-    protected function cleanupLocalCache() {
+    protected function cleanupOrphansFromLocalCache() {
+        $db = $this->contactCacheDb->getDb();
+        $tableNameContact = 'Contact';
+        $tableNameContactCodes = 'Contact_Codes';
 
+        //CONTACT ORPHANS
+        $query = "SELECT C.id FROM $tableNameContact AS C LEFT OUTER JOIN $tableNameContactCodes AS CC ON C.id = CC.contact_id WHERE CC.id IS NULL;";
+        $statement = $db->prepare($query);
+        if ($statement->execute()) {
+            $orphans = $statement->fetchAll(\PDO::FETCH_COLUMN);
+            if (count($orphans)) {
+                $orphans = array_map(
+                    function ($el) {
+                        return "'" . $el . "'";
+                    }, $orphans
+                );
+                $this->log("DELETING ORPHANED CONTACTS: " . count($orphans));
+                $query = "DELETE FROM $tableNameContact WHERE id IN (" . implode(",", $orphans) . ")";
+                $statement = $db->prepare($query);
+                $statement->execute();
+            }
+        }
+
+        //CODE ORPHANS
+        $query = "SELECT CC.id FROM $tableNameContactCodes AS CC LEFT OUTER JOIN $tableNameContact AS C ON CC.contact_id = C.id WHERE C.id IS NULL;";
+        $statement = $db->prepare($query);
+        if ($statement->execute()) {
+            $orphans = $statement->fetchAll(\PDO::FETCH_COLUMN);
+            if (count($orphans)) {
+                $this->log("ORPHANED CODES: " . count($orphans));
+                $orphans = array_map(
+                    function ($el) {
+                        return "'" . $el . "'";
+                    }, $orphans
+                );
+                $this->log("DELETING ORPHANED CODES: " . count($orphans));
+                $query = "DELETE FROM $tableNameContactCodes WHERE id IN (" . implode(",", $orphans) . ")";
+                $statement = $db->prepare($query);
+                $statement->execute();
+            }
+        }
     }
 
     /**

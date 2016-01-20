@@ -80,6 +80,4 @@ class ContactCache extends CacheDb {
             $statement->execute();
         }
     }
-
-
 }

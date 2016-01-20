@@ -40,6 +40,13 @@ class SqliteDb {
     }
 
     /**
+     * @return \PDO
+     */
+    public function getDb() {
+        return $this->db;
+    }
+
+    /**
      * @param string $msg
      */
     protected function log($msg) {
