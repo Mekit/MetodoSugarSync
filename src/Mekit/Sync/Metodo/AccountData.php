@@ -13,6 +13,7 @@ use Mekit\SugarCrm\Rest\SugarCrmRest;
 use Mekit\SugarCrm\Rest\SugarCrmRestException;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
+use Monolog\Logger;
 
 class AccountData extends Sync implements SyncInterface {
     /** @var callable */
@@ -174,18 +175,18 @@ class AccountData extends Sync implements SyncInterface {
             $syncItem->profiling_c = FALSE;//"Da profilare"
 
 
-            $this->log("SYNCING CRM: " . json_encode($syncItem));
+            $this->log("CRM SYNC ITEM: " . json_encode($syncItem));
 
 
 
             //UPDATE
             if ($crm_id) {
                 $this->log("updating remote($crm_id): " . $syncItem->name);
-                //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
                 try {
                     $result = $this->sugarCrmRest->comunicate('/Accounts/' . $crm_id, 'PUT', $syncItem);
+                    $this->log("UPDATE REMOTE RESULT: " . json_encode($result));
                 } catch(SugarCrmRestException $e) {
                     //go ahead with false silently
                     $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
@@ -203,11 +204,11 @@ class AccountData extends Sync implements SyncInterface {
                  */
                 //CREATE
                 $this->log("creating remote(" . $syncItem->name . ")...");
-                //$this->log(json_encode($syncItem));
                 unset($syncItem->crm_id);
                 unset($syncItem->id);
                 try {
                     $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
+                    $this->log("CREATE REMOTE RESULT: " . json_encode($result));
                 } catch(SugarCrmRestException $e) {
                     $this->log("REMOTE INSERT ERROR!!! - " . $e->getMessage());
                 }
@@ -218,7 +219,6 @@ class AccountData extends Sync implements SyncInterface {
             //$this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
             //$this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
         }
-        //$this->log("REMOTE RESULT: " . json_encode($result));
         return $result;
     }
 
@@ -279,7 +279,10 @@ class AccountData extends Sync implements SyncInterface {
                     $this->log(str_repeat("-", 120));
                     $this->log(str_repeat("-", 120));
                     $this->log(str_repeat("-", 120));
-                    $this->log("There is a multiple correspondence for requested codes!" . json_encode($filter));
+                    $this->log(
+                        "There is a multiple correspondence for requested codes!"
+                        . json_encode($filter), Logger::ERROR, $result->records
+                    );
                     $this->log("RESULTS: " . json_encode($result->records));
                     $this->log(str_repeat("-", 120));
                     $this->log(str_repeat("-", 120));

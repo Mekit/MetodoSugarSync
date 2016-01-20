@@ -8,19 +8,25 @@
 namespace Mekit\Sync;
 
 
+use Monolog\Logger;
+
 class Sync {
-  /** @var callable */
-  protected $logger;
+    /** @var callable */
+    protected $logger;
 
-  /**
-   * @param callable $logger
-   */
-  public function __construct($logger) {
-    $this->logger = $logger;
-  }
+    /**
+     * @param callable $logger
+     */
+    public function __construct($logger) {
+        $this->logger = $logger;
+    }
 
-  protected function log($msg) {
-    call_user_func($this->logger, $msg);
-  }
-
+    /**
+     * @param string $msg
+     * @param int    $level
+     * @param array  $context
+     */
+    protected function log($msg, $level = Logger::INFO, $context = []) {
+        call_user_func($this->logger, $msg, $level, $context);
+    }
 }

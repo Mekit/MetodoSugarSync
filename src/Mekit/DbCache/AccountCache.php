@@ -56,6 +56,11 @@ class AccountCache extends CacheDb {
             if ($remote) {
                 $query .= " crm_last_update_time_c = '" . $oldDate->format("c") . "'";
             }
+            //tmp - ONLY MEKIT - @todo: remove me!
+            if (TRUE && $remote) {
+                $query .= " WHERE metodo_client_code_mekit_c IS NOT NULL";
+            }
+
             $query .= ";";
             $statement = $this->db->prepare($query);
             $statement->execute();

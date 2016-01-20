@@ -9,6 +9,7 @@ namespace Mekit\Command;
 
 use Mekit\Console\Configuration;
 use Monolog\Handler\StreamHandler;
+use Monolog\Handler\SwiftMailerHandler;
 use Monolog\Logger;
 use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -27,6 +28,9 @@ class Command extends ConsoleCommand {
     /** @var  Logger */
     protected $logger;
 
+    /** @var  \Swift_Mailer */
+    protected $mailer;
+
     /** @var bool */
     protected $logToConsole = FALSE;
 
@@ -44,6 +48,7 @@ class Command extends ConsoleCommand {
         $this->cmdInput = $input;
         $this->cmdOutput = $output;
         $this->setConfigurationFile();
+        $this->setupMailer();
         $this->setupLogger();
     }
 
@@ -76,24 +81,48 @@ class Command extends ConsoleCommand {
                 : ""
             );
             $this->logger = new Logger("file_logger");
+            //LOG HANDLER: FILE
             $today = new \DateTime();
             $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR
                            . $logFilePrefix
                            . $today->format("Y-m-d")
                            . '.txt';
-            $logHandler = new StreamHandler($logFilePath, Logger::INFO);
-            $this->logger->pushHandler($logHandler);
+            $logToFileHandler = new StreamHandler($logFilePath, Logger::INFO);
+            $this->logger->pushHandler($logToFileHandler);
+            //
+            //@todo: re-enable me!
+            //LOG HANDLER: MAIL
+            /** @var \Swift_Message $message */
+            /*
+            $message = \Swift_Message::newInstance($cfg['swiftmailer']['message']['subject'])
+                ->setFrom($cfg['swiftmailer']['message']['from'])
+                ->setTo($cfg['swiftmailer']['message']['to'])
+                ->setBody('...this will be replaced...')
+            ;
+            $logToMailHandler = new SwiftMailerHandler($this->mailer, $message);
+            $this->logger->pushHandler($logToMailHandler);*/
         }
+    }
+
+    protected function setupMailer() {
+        $cfg = Configuration::getConfiguration();
+        // Create the Transport
+        $transport = \Swift_SmtpTransport::newInstance($cfg['swiftmailer']['server'], $cfg['swiftmailer']['port'])
+            ->setUsername($cfg['swiftmailer']['username'])
+            ->setPassword($cfg['swiftmailer']['password']);
+        // Create the Mailer
+        $this->mailer = \Swift_Mailer::newInstance($transport);
     }
 
     /**
      * @param string $msg
-     * @todo: set log level
+     * @param int    $level
+     * @param array  $context
      */
-    public function log($msg) {
+    public function log($msg, $level = Logger::INFO, $context = []) {
         if ($this->logToConsole) {
             $this->cmdOutput->writeln($msg);
         }
-        $this->logger->addInfo($msg);
+        $this->logger->addRecord($level, $msg, $context);
     }
 }
