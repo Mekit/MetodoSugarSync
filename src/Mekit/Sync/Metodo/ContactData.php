@@ -55,8 +55,15 @@ class ContactData extends Sync implements SyncInterface {
         }
 
         if (isset($options["invalidate-cache"]) && $options["invalidate-cache"]) {
-            $this->contactCacheDb->invalidateAll();
-            $this->contactCodesCacheDb->invalidateAll();
+            $this->contactCacheDb->invalidateAll(TRUE, TRUE);
+        }
+
+        if (isset($options["invalidate-local-cache"]) && $options["invalidate-local-cache"]) {
+            $this->contactCacheDb->invalidateAll(TRUE, FALSE);
+        }
+
+        if (isset($options["invalidate-remote-cache"]) && $options["invalidate-remote-cache"]) {
+            $this->contactCacheDb->invalidateAll(FALSE, TRUE);
         }
 
         if (isset($options["update-cache"]) && $options["update-cache"]) {

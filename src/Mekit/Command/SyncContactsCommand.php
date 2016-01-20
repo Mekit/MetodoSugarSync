@@ -42,6 +42,14 @@ class SyncContactsCommand extends Command implements CommandInterface {
                     'Reset timestamps on cache so that updates will occur again?'
                 ),
                 new InputOption(
+                    'invalidate-local-cache', '', InputOption::VALUE_NONE,
+                    'Reset timestamps on local cache so that updates will occur again.'
+                ),
+                new InputOption(
+                    'invalidate-remote-cache', '', InputOption::VALUE_NONE,
+                    'Reset timestamps on remote cache so that updates will occur again.'
+                ),
+                new InputOption(
                     'update-cache', NULL, InputOption::VALUE_NONE,
                     'Update local cache?'
                 ),

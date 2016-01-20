@@ -43,16 +43,42 @@ class ContactCache extends CacheDb {
         $statement->execute();
     }
 
-    public function invalidateAll() {
-        $tableName = $this->dataIdentifier;
-        $this->log("INVALIDATING LOCAL CACHE DATA FOR: " . $tableName);
-        $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
-        $query = "UPDATE " . $tableName . " SET"
-                 . " metodo_last_update_time_c = '" . $oldDate->format("c") . "'"
-                 . ", crm_last_update_time_c = '" . $oldDate->format("c") . "'"
-                 . ";";
-        $statement = $this->db->prepare($query);
-        $statement->execute();
+    /**
+     * @param bool $local
+     * @param bool $remote
+     */
+    public function invalidateAll($local = FALSE, $remote = FALSE) {
+        if ($local || $remote) {
+            $tableName = $this->dataIdentifier;
+            $this->log(
+                "INVALIDATING CACHE[" . (($local ? "LOCAL" : "") . "|" . ($remote ? "REMOTE" : "")) . "] DATA FOR: "
+                . $tableName
+            );
+
+            $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+            $query = "UPDATE " . $tableName . " SET";
+
+            if ($local) {
+                $query .= " metodo_last_update_time_c = '" . $oldDate->format("c") . "'";
+            }
+            $query .= ($local && $remote) ? ',' : '';
+            if ($remote) {
+                $query .= " crm_last_update_time_c = '" . $oldDate->format("c") . "'";
+            }
+
+            //tmp - ONLY MEKIT - @todo: remove me!
+            if (TRUE && $remote) {
+                //$query .= " WHERE metodo_client_code_mekit_c IS NOT NULL";
+                //$query .= " WHERE id = '47cb57a10a837f35c5a0c1b3d90341fb'";
+                //
+            }
+
+            $query .= ";";
+
+
+            $statement = $this->db->prepare($query);
+            $statement->execute();
+        }
     }
 
 
