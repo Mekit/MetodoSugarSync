@@ -16,7 +16,9 @@ class ContactCodesCache extends CacheDb {
         'metodo_contact_code' => ['type' => 'TEXT', 'index' => TRUE],
         'metodo_code_company' => ['type' => 'TEXT', 'index' => FALSE],
         'metodo_code_cf' => ['type' => 'TEXT', 'index' => TRUE],
-        'metodo_role' => ['type' => 'TEXT', 'index' => FALSE]
+        'metodo_role' => ['type' => 'TEXT', 'index' => FALSE],
+        'metodo_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE],
+        'crm_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE]
     ];
 
     /**

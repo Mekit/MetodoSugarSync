@@ -417,11 +417,7 @@ class ContactData extends Sync implements SyncInterface {
         }
         else {
             //no code was found
-            $codeId = md5("CodeId-" . microtime(TRUE));
-            //$contactId = md5("contactId-" . microtime(TRUE));
-            //create codes
-            $updateItemContactCodes = new \stdClass();
-            $updateItemContactCodes->id = $codeId;
+            $updateItemContactCodes = $this->generateNewContactCodeObject($localItem);
             //$updateItemContactCodes->contact_id = $contactId; // - this will be assigned later
             $updateItemContactCodes->database = $itemDb;
             $updateItemContactCodes->metodo_contact_code = $localItem->metodoCombinedCode;
@@ -551,7 +547,10 @@ class ContactData extends Sync implements SyncInterface {
         $updateItemLastUpdateTime = new \DateTime($updateItemContact->metodo_last_update_time_c);
 
         if ($metodoLastUpdateTime > $updateItemLastUpdateTime) {
+
             $updateItemContact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+            $updateItemContactCodes->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
+
             if (!empty($localItem->first_name)) {
                 if (empty($updateItemContact->first_name)) {
                     $updateItemContact->first_name = $localItem->first_name;
@@ -655,18 +654,26 @@ class ContactData extends Sync implements SyncInterface {
         $contact = new \stdClass();
         $contact->id = md5(json_encode($localItem) . microtime(TRUE));
         $contact->email = '[]';
-        //
         $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
-        //
-        //$metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
-        //$contact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
         $contact->metodo_last_update_time_c = $oldDate->format("c");
-        //
-        //$crmLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
-        //$contact->crm_last_update_time_c = $crmLastUpdateTime->format("c");
         $contact->crm_last_update_time_c = $oldDate->format("c");
         return $contact;
     }
+
+    /**
+     * @param \stdClass $localItem
+     * @return \stdClass
+     */
+    protected function generateNewContactCodeObject($localItem) {
+        $code = new \stdClass();
+        $code->id = md5(json_encode($localItem) . microtime(TRUE));
+        $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+        $code->metodo_last_update_time_c = $oldDate->format("c");
+        $code->crm_last_update_time_c = $oldDate->format("c");
+        return $code;
+    }
+
+
 
 
     /**
