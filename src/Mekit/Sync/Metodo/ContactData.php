@@ -14,6 +14,7 @@ use Mekit\SugarCrm\Rest\SugarCrmRest;
 use Mekit\SugarCrm\Rest\SugarCrmRestException;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
+use Monolog\Logger;
 
 class ContactData extends Sync implements SyncInterface {
     /** @var callable */
@@ -97,20 +98,205 @@ class ContactData extends Sync implements SyncInterface {
 
     protected function updateRemoteFromCache() {
         $this->log("updating remote...");
-        /*
-        $this->cacheDb->resetItemWalker();
+        $this->contactCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
-        while ($cacheItem = $this->cacheDb->getNextItem()) {
+        while ($cacheItem = $this->contactCacheDb->getNextItem()) {
             $this->counters["remote"]["index"]++;
-            //$remoteItem = $this->saveRemoteItem($cacheItem);
-            //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+            $remoteItem = $this->saveRemoteItem($cacheItem);
+            //$this->log("CRM RESPONSE: " . json_encode($remoteItem));
+            $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
 
-            $this->log("REMOTE: " . json_encode($remoteItem));
-            if($this->counters["remote"]["index"] > 1) {
-                break;
+//            if($this->counters["remote"]["index"] >= 100) {
+//                break;
+//            }
+
+        }
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @param \stdClass $remoteItem
+     */
+    protected function storeCrmIdForCachedItem($cacheItem, $remoteItem) {
+        if ($remoteItem) {
+            $cacheUpdateItem = new \stdClass();
+            $cacheUpdateItem->id = $cacheItem->id;
+            if (isset($remoteItem->updateFailure) && $remoteItem->updateFailure) {
+                //we must remove crm_id and reset crm_last_update_time_c on $cacheItem
+                $cacheUpdateItem->crm_id = NULL;
+                $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+                $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
+            }
+            else {
+                $cacheUpdateItem->crm_id = $remoteItem->id;
+                $now = new \DateTime();
+                $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
+            }
+            $this->contactCacheDb->updateItem($cacheUpdateItem);
+        }
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @return \stdClass|bool
+     */
+    protected function saveRemoteItem($cacheItem) {
+        $result = FALSE;
+        $ISO = 'Y-m-d\TH:i:sO';
+        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
+        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
+
+        if ($metodoLastUpdate > $crmLastUpdate) {
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["remote"]["index"]
+            );
+
+            try {
+                $crm_id = $this->loadRemoteItemId($cacheItem);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+                return $result;
+            }
+
+            $syncItem = clone($cacheItem);
+
+            //modify sync item
+            if (!empty($syncItem->email)) {
+                $emailArray = json_decode($syncItem->email);
+                if (is_array($emailArray) && count($emailArray)) {
+                    $syncItem->email = [];
+                    $primary = TRUE;
+                    foreach ($emailArray as $email) {
+                        $syncItem->email[] = [
+                            "email_address" => $email,
+                            "invalid_email" => FALSE,
+                            "opt_out" => FALSE,
+                            "primary_address" => $primary,
+                            "reply_to_address" => FALSE
+                        ];
+                        $primary = FALSE;
+                    }
+                }
+            }
+            if (!empty($syncItem->salutation)) {
+                $syncItem->gender_c = "M";
+                if (in_array($syncItem->salutation, ['Sig.ra', 'Sig.na', 'Dott.ssa', 'Prof.ssa'])) {
+                    $syncItem->gender_c = "F";
+                }
+            }
+
+            //add special data
+            $syncItem->profiling_c = FALSE;//"Da profilare"
+
+            //unset data
+            unset($syncItem->crm_id);
+            unset($syncItem->id);
+
+
+            $this->log("CRM SYNC ITEM: " . json_encode($syncItem));
+
+            if ($crm_id) {
+                //UPDATE
+                $this->log("updating remote($crm_id): " . $syncItem->first_name . " " . $syncItem->last_name);
+                try {
+                    $result = $this->sugarCrmRest->comunicate('/Contacts/' . $crm_id, 'PUT', $syncItem);
+                } catch(SugarCrmRestException $e) {
+                    //go ahead with false silently
+                    $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
+                    //we must remove crm_id from $cacheItem
+                    //create fake result
+                    $result = new \stdClass();
+                    $result->updateFailure = TRUE;
+                }
+            }
+            else {
+                //CREATE
+                $this->log("creating remote: " . $syncItem->first_name . " " . $syncItem->last_name);
+                try {
+                    $result = $this->sugarCrmRest->comunicate('/Contacts', 'POST', $syncItem);
+                } catch(SugarCrmRestException $e) {
+                    $this->log("REMOTE INSERT ERROR!!! - " . $e->getMessage());
+                }
             }
         }
-        */
+        return $result;
+    }
+
+    /**
+     * They would be recreated all over again
+     * @param \stdClass $cacheItem
+     * @return string|bool
+     * @throws \Exception
+     */
+    protected function loadRemoteItemId($cacheItem) {
+        $crm_id = FALSE;
+        $filter = [];
+
+        if (!empty($cacheItem->crm_id)) {
+            $filter[] = [
+                'id' => $cacheItem->crm_id
+            ];
+        }
+        else {
+            if (!empty($cacheItem->phone_mobile)) {
+                $filter[] = [
+                    'phone_mobile' => $cacheItem->phone_mobile
+                ];
+            }
+            else if (!empty($cacheItem->first_name) && !empty($cacheItem->last_name)) {
+                $filter[] = [
+                    'first_name' => $cacheItem->first_name,
+                    'last_name' => $cacheItem->last_name
+                ];
+            }
+        }
+
+        //try to load 2 of them - if there are more than one we do not know which one to update
+        if (count($filter)) {
+            $arguments = [
+                "filter" => $filter,
+                "max_num" => 2,
+                "offset" => 0,
+                "fields" => "id",
+            ];
+
+            $result = $this->sugarCrmRest->comunicate('/Contacts/filter', 'GET', $arguments);
+
+            if (isset($result) && isset($result->records)) {
+
+                $this->log("IDSEARCH(" . json_encode($filter) . "): " . json_encode($result));
+
+                if (count($result->records) > 1) {
+                    //This should never happen!!!
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(
+                        "There is a multiple correspondence for requested codes!"
+                        . json_encode($filter), Logger::ERROR, $result->records
+                    );
+                    $this->log("RESULTS: " . json_encode($result->records));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    $this->log(str_repeat("-", 120));
+                    throw new \Exception(
+                        "There is a multiple correspondence for requested codes!" . json_encode($filter)
+                    );
+                }
+                if (count($result->records) == 1) {
+                    /** @var \stdClass $remoteItem */
+                    $remoteItem = $result->records[0];
+                    //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
+                    $crm_id = $remoteItem->id;
+                }
+            }
+        }
+        else {
+            //This happens when filter is empty
+            throw new \Exception("CacheItem does not have usable data for filter!");
+        }
+        return ($crm_id);
     }
 
 
