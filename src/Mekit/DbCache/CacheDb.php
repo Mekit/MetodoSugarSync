@@ -142,7 +142,7 @@ class CacheDb extends SqliteDb {
                 $this->log(__CLASS__ . " - SQL: " . $query);
             }
             if (isset($parameters)) {
-                $this->log(__CLASS__ . " - PARAMETERS: " . $parameters);
+                $this->log(__CLASS__ . " - PARAMETERS: " . json_encode($parameters));
             }
         }
         return $answer;

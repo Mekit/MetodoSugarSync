@@ -100,18 +100,170 @@ class ContactData extends Sync implements SyncInterface {
         $this->log("updating remote...");
         $this->contactCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
+        $registeredCodes = [];
         while ($cacheItem = $this->contactCacheDb->getNextItem()) {
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveRemoteItem($cacheItem);
-            //$this->log("CRM RESPONSE: " . json_encode($remoteItem));
             $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+            $RC = $this->createRelationshipsForCompanies($cacheItem);
+            $registeredCodes = array_merge($registeredCodes, $RC);
+            if ($this->counters["remote"]["index"] >= 50) {
+                break;
+            }
+        }
+        //this must stay outside of the loop
+        //$this->updateCrmDateOnCodes($registeredCodes);
+    }
 
-//            if($this->counters["remote"]["index"] >= 100) {
-//                break;
-//            }
 
+    protected function updateCrmDateOnCodes($registeredCodes) {
+        $this->contactCacheDb->resetItemWalker();
+        $this->log("updating codes cache...");
+        foreach ($registeredCodes as $registeredCode) {
+            $cacheUpdateItem = new \stdClass();
+            $cacheUpdateItem->id = $registeredCode;
+            $now = new \DateTime();
+            $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
+            $this->contactCodesCacheDb->updateItem($cacheUpdateItem);
+            $this->log("UPDATED CACHE CODE DATE: " . $registeredCode);
         }
     }
+
+    /**
+     * Returns list of code ids to update in cache (dates)
+     *
+     * @param \stdClass $cacheItem
+     * @return array
+     */
+    protected function createRelationshipsForCompanies($cacheItem) {
+        $answer = [];
+
+        $ISO = 'Y-m-d\TH:i:sO';
+        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
+        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
+
+        if ($metodoLastUpdate > $crmLastUpdate) {
+            $this->log("CACHE: " . json_encode($cacheItem));
+            $cacheContactId = $cacheItem->id;
+            $crmContactId = $cacheItem->crm_id;
+            $filter = [
+                'contact_id' => $cacheContactId
+            ];
+            $contactCodes = $this->contactCodesCacheDb->loadItems($filter);
+            if ($contactCodes && count($contactCodes)) {
+                foreach ($contactCodes as $contactCode) {
+                    $this->log("CONTACT CODE: " . json_encode($contactCode));
+                    $crmAccountId = $this->loadRemoteAccountId($contactCode->database, $contactCode->metodo_code_company);
+                    if ($crmAccountId) {
+                        /*
+                         * IMP 1-5
+                         * MEKIT 6-10
+                         *
+                         * 1/6 = DIREZIONE
+                         * 2/7 = Amministrazione
+                         * 3/8 = Acquisti
+                         * 4/9 = Commerciale
+                         * 5/10 = Operativo + NO-ROLE
+                         * */
+                        $linkName = FALSE;
+                        $relationshipNumber = FALSE;//accounts_contacts_[1-10]
+                        switch ($contactCode->metodo_role) {
+                            case "DIREZIONE":
+                                $relationshipNumber = 1;
+                                break;
+                            case "AMMINISTRAZIONE":
+                                $relationshipNumber = 2;
+                                break;
+                            case "ACQUISTI":
+                                $relationshipNumber = 3;
+                                break;
+                            case "COMMERCIALE":
+                                $relationshipNumber = 4;
+                                break;
+                            case "OPERATIVO":
+                            case "NO-ROLE":
+                                $relationshipNumber = 5;
+                                break;
+                        }
+                        if ($relationshipNumber !== FALSE) {
+                            $relationshipNumber += (strtoupper($contactCode->database) == "MEKIT" ? 5 : 0);
+                            $linkName = 'accounts_contacts_' . $relationshipNumber;
+                        }
+                        if ($linkName) {
+                            $this->log("REMOTE ACCOUNT ID: " . $crmAccountId);
+                            $this->log("RELATIONSHIP NAME: " . $linkName);
+                            try {
+                                $linkData = [
+                                    "link_name" => $linkName,
+                                    "ids" => [$crmContactId]
+                                ];
+                                $result = $this->sugarCrmRest->comunicate(
+                                    '/Accounts/' . $crmAccountId . '/link', 'POST', $linkData
+                                );
+                                $this->log("LINKED: " . json_encode($result));
+                                $answer[] = $contactCode->id;
+                            } catch(SugarCrmRestException $e) {
+                                //go ahead with false silently
+                                $this->log("REMOTE RELATIONSHIP ERROR!!! - " . $e->getMessage());
+                            }
+                        }
+                        else {
+                            $this->log(
+                                "REMOTE RELATIONSHIP ERROR!!! - No link name for db:" . $contactCode->database
+                                . " - role: " . $contactCode->metodo_role
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            $this->log("Relation is already up to date!");
+        }
+
+
+        return $answer;
+    }
+
+    /**
+     * @param $database
+     * @param $metodo_code
+     * @return string|bool
+     */
+    protected function loadRemoteAccountId($database, $metodo_code) {
+        $answer = FALSE;
+        $type = FALSE;
+        if (strtoupper(substr($metodo_code, 0, 1)) == 'C') {
+            $type = 'cli';
+        }
+        else if (strtoupper(substr($metodo_code, 0, 1)) == 'F') {
+            $type = 'sup';
+        }
+        $db = strtolower($database);
+        if ($type && $db) {
+            $filterFieldName = 'metodo_inv_' . $type . '_' . $db . '_c';
+
+            $filter[] = [
+                $filterFieldName => $metodo_code
+            ];
+
+            $arguments = [
+                "filter" => $filter,
+                "max_num" => 1,
+                "offset" => 0,
+                "fields" => "id",
+            ];
+
+            $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
+
+            if (isset($result) && isset($result->records) && count($result->records)) {
+                $remoteItem = $result->records[0];
+                $answer = $remoteItem->id;
+            }
+        }
+        return $answer;
+    }
+
 
     /**
      * @param \stdClass $cacheItem
@@ -222,6 +374,7 @@ class ContactData extends Sync implements SyncInterface {
         }
         return $result;
     }
+
 
     /**
      * They would be recreated all over again
