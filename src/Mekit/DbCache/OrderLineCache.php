@@ -7,22 +7,23 @@
 
 namespace Mekit\DbCache;
 
-class OrderCache extends CacheDb {
+class OrderLineCache extends CacheDb {
     /** @var array */
     protected $columns = [
         'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
         'crm_id' => ['type' => 'TEXT', 'index' => FALSE],
         'database_metodo' => ['type' => 'TEXT', 'index' => TRUE],
-        'id_head' => ['type' => 'TEXT', 'index' => TRUE],
-        'document_number' => ['type' => 'TEXT', 'index' => FALSE],
-        'data_doc' => ['type' => 'TEXT', 'index' => FALSE],
-        'cod_c_f' => ['type' => 'TEXT', 'index' => FALSE],
-        'imp_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
-        'mekit_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
-        'dsc_payment' => ['type' => 'TEXT', 'index' => FALSE],
-        'tot_imponibile_euro' => ['type' => 'TEXT', 'index' => FALSE],
-        'tot_imposta_euro' => ['type' => 'TEXT', 'index' => FALSE],
-        'tot_documento_euro' => ['type' => 'TEXT', 'index' => FALSE],
+        'order_id' => ['type' => 'TEXT', 'index' => TRUE],
+        'id_line' => ['type' => 'TEXT', 'index' => TRUE],
+        'line_order' => ['type' => 'TEXT', 'index' => FALSE],
+        'article_code' => ['type' => 'TEXT', 'index' => FALSE],
+        'article_description' => ['type' => 'TEXT', 'index' => FALSE],
+        'price_list_number' => ['type' => 'TEXT', 'index' => FALSE],
+        'quantity' => ['type' => 'TEXT', 'index' => FALSE],
+        'measure_unit' => ['type' => 'TEXT', 'index' => FALSE],
+        'gross_total' => ['type' => 'TEXT', 'index' => FALSE],
+        'net_total' => ['type' => 'TEXT', 'index' => FALSE],
+        'net_total_listino_42' => ['type' => 'TEXT', 'index' => FALSE],
         'metodo_last_update_time' => ['type' => 'TEXT', 'index' => FALSE],
         'crm_last_update_time' => ['type' => 'TEXT', 'index' => FALSE]
     ];

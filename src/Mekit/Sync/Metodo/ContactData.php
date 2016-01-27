@@ -107,9 +107,9 @@ class ContactData extends Sync implements SyncInterface {
             $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
             $RC = $this->createRelationshipsForCompanies($cacheItem);
             $registeredCodes = array_merge($registeredCodes, $RC);
-            if ($this->counters["remote"]["index"] >= 50) {
-                break;
-            }
+//            if ($this->counters["remote"]["index"] >= 50) {
+//                break;
+//            }
         }
         //this must stay outside of the loop
         //$this->updateCrmDateOnCodes($registeredCodes);
@@ -883,7 +883,7 @@ class ContactData extends Sync implements SyncInterface {
                 NULLIF(TP.EMAIL, '') IS NOT NULL OR
                 NULLIF(TP.CELL, '') IS NOT NULL
                 )
-                ORDER BY TP.DATAMODIFICA ASC;
+                ORDER BY TP.CELL DESC, TP.COGNOME DESC, TP.NOME DESC
                 ";
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
