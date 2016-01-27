@@ -684,9 +684,11 @@ class ContactData extends Sync implements SyncInterface {
             }
             $candidates = $this->contactCacheDb->loadItems($filter);
             if ($candidates) {
+                /*
                 if (count($candidates) > 1) {
                     throw new \Exception("Search by Email returned multiple results!");
-                }
+                }*/
+                $this->log("*** IDENTIFIED BY MAIL(" . $localItem->email . ") ***");
                 $cachedItemContact = $candidates[0];
                 $operations["contact"] = 'update';
                 $updateItemContact = clone($cachedItemContact);

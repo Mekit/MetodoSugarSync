@@ -35,6 +35,81 @@ class ContactCache extends CacheDb {
         parent::__construct($dataIdentifier, $logger);
     }
 
+
+    /**
+     * @param array $filter
+     * @return bool|array
+     */
+    public function loadItems($filter) {
+        $answer = FALSE;
+        /* These fields contain json encoded multiple elements*/
+        $multipleDataFields = ['email'];
+        try {
+            if (count($filter)) {
+                $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";
+                $filterIndex = 1;
+                $maxFilters = count($filter);
+                $parameters = [];
+                foreach ($filter as $columnName => $columnValue) {
+                    $paramName = ':' . $columnName;
+                    $operator = '=';
+                    if (in_array($columnName, $multipleDataFields)) {
+                        $operator = 'LIKE';
+                        $columnValue = '%"' . $columnValue . '"%';
+                    }
+                    $query .= ' ' . $columnName . ' ' . $operator . ' ' . $paramName . ($filterIndex
+                                                                                        < $maxFilters ? " AND" : "");
+                    $parameters[$paramName] = $columnValue;
+                    $filterIndex++;
+                }
+                //$this->log("Query: " . $query . " - Params: " . json_encode($parameters));
+                $stmt = $this->db->prepare($query);
+
+                if ($stmt->execute($parameters)) {
+                    $answer = $stmt->fetchAll(\PDO::FETCH_OBJ);
+                }
+            }
+        } catch(\PDOException $e) {
+            $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
+        }
+        return $answer;
+    }
+
+    public function loadItemsOld($filter) {
+        $answer = FALSE;
+        try {
+            if (count($filter)) {
+                $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";
+                $filterIndex = 1;
+                $maxFilters = count($filter);
+                $parameters = [];
+                foreach ($filter as $columnName => $columnValue) {
+                    $paramName = ':' . $columnName;
+                    $operator = '=';
+                    if (in_array($columnName, ["phone_mobile", "email"])) {
+                        $operator = 'LIKE';
+                        $columnValue = '%"' . $columnValue . '"%';
+                    }
+                    $query .= ' ' . $columnName . ' ' . $operator . ' ' . $paramName . ($filterIndex
+                                                                                        < $maxFilters ? " AND" : "");
+                    $parameters[$paramName] = $columnValue;
+                    $filterIndex++;
+                }
+                $this->log("Query: " . $query . " - Params: " . json_encode($parameters));
+                $stmt = $this->db->prepare($query);
+
+                if ($stmt->execute($parameters)) {
+                    $answer = $stmt->fetchAll(\PDO::FETCH_OBJ);
+                }
+            }
+        } catch(\PDOException $e) {
+            $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
+        }
+        return $answer;
+    }
+
+
+
     public function removeAll() {
         $tableName = $this->dataIdentifier;
         $this->log(__CLASS__ . " - REMOVING ALL CACHE DATA FOR: " . $tableName);
