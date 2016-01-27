@@ -676,6 +676,24 @@ class ContactData extends Sync implements SyncInterface {
             }
         }
 
+        //search by: email
+        if (!$cachedItemContact) {
+            $filter = [];
+            if (!empty($localItem->email)) {
+                $filter["email"] = $localItem->email;
+            }
+            $candidates = $this->contactCacheDb->loadItems($filter);
+            if ($candidates) {
+                if (count($candidates) > 1) {
+                    throw new \Exception("Search by Email returned multiple results!");
+                }
+                $cachedItemContact = $candidates[0];
+                $operations["contact"] = 'update';
+                $updateItemContact = clone($cachedItemContact);
+                $updateItemContactCodes->contact_id = $updateItemContact->id;
+            }
+        }
+
 
         //all search failed - create new contact
         if (!$cachedItemContact) {
@@ -764,9 +782,10 @@ class ContactData extends Sync implements SyncInterface {
         if (!isset($operations["contact"])) {
             throw new \Exception("operations[contact] NOT SET!");
         }
+        /*
         if (empty($updateItemContact->first_name) && empty($updateItemContact->last_name)) {
             throw new \Exception("Both first and last names are empty!");
-        }
+        }*/
 
 
         //INSERT / UPDATE CODES
@@ -882,9 +901,11 @@ class ContactData extends Sync implements SyncInterface {
             $item->role = trim($item->role);
 
             //normalization (set RUOLO as last_name if both first_name and last_name fields are empty)
+            /*
             if (empty($item->first_name) && empty($item->last_name)) {
                 $item->last_name = $item->role . ' - ' . $item->metodoCombinedCode;
             }
+            */
             //
         }
         else {

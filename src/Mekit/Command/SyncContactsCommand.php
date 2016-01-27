@@ -70,8 +70,8 @@ class SyncContactsCommand extends Command implements CommandInterface {
     protected function execute(InputInterface $input, OutputInterface $output) {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
-        $accountData = $this->getDataClass();
-        $accountData->execute($input->getOptions());
+        $contactData = $this->getDataClass();
+        $contactData->execute($input->getOptions());
         $this->log("Command " . static::COMMAND_NAME . " done.");
         return TRUE;
     }
