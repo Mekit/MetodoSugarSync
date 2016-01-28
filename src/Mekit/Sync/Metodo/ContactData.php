@@ -883,7 +883,7 @@ class ContactData extends Sync implements SyncInterface {
                 NULLIF(TP.EMAIL, '') IS NOT NULL OR
                 NULLIF(TP.CELL, '') IS NOT NULL
                 )
-                ORDER BY TP.CELL DESC, TP.COGNOME DESC, TP.NOME DESC
+                ORDER BY TP.CELL DESC, TP.RIFCODCONTO ASC, TP.COGNOME DESC, TP.NOME DESC
                 ";
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
