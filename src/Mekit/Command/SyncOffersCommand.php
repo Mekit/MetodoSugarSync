@@ -7,15 +7,15 @@
 
 namespace Mekit\Command;
 
-use Mekit\Sync\Metodo\OrderData;
+use Mekit\Sync\Metodo\OfferData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SyncOrdersCommand extends Command implements CommandInterface {
-    const COMMAND_NAME = 'sync:orders';
-    const COMMAND_DESCRIPTION = 'Synchronize Orders';
+class SyncOffersCommand extends Command implements CommandInterface {
+    const COMMAND_NAME = 'sync:offers';
+    const COMMAND_DESCRIPTION = 'Synchronize Offers';
 
     public function __construct() {
         parent::__construct(NULL);
@@ -77,11 +77,11 @@ class SyncOrdersCommand extends Command implements CommandInterface {
     }
 
     /**
-     * @return OrderData
+     * @return OfferData
      */
     protected function getDataClass() {
-        $class = "Mekit\\Sync\\Metodo\\OrderData";
-        /** @var OrderData $dataClass */
+        $class = "Mekit\\Sync\\Metodo\\OfferData";
+        /** @var OfferData $dataClass */
         $dataClass = new $class([$this, 'log']);
         return $dataClass;
     }
