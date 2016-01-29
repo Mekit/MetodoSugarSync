@@ -194,8 +194,8 @@ class OfferData extends Sync implements SyncInterface {
             }
         }
         return $result;
-
     }
+
 
     /**
      * @param \stdClass $cacheItem
@@ -223,6 +223,7 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem = clone($cacheItem);
 
             //modify sync item here
+            $syncItem->article_description = str_replace('=', '.', $syncItem->article_description);//don't ask why but with '=' in desc it wont work
 
             //unset data
             unset($syncItem->crm_id);
@@ -322,8 +323,66 @@ class OfferData extends Sync implements SyncInterface {
                 }
             }
         }
+        if ($remoteItem) {
+            $this->relateOfferToAccountOnRemote($cacheItem, $remoteItem);
+        }
+
         return $remoteItem;
     }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @param \stdClass $remoteItem
+     * @return \stdClass|bool
+     */
+    protected function relateOfferToAccountOnRemote($cacheItem, $remoteItem) {
+        $result = FALSE;
+        $remoteFieldName = $this->getRemoteFieldNameForClienteDiFatturazione($cacheItem->database_metodo, $cacheItem->cod_c_f);
+        $this->log("remFldName(" . $cacheItem->database_metodo . "/" . $cacheItem->cod_c_f . "): " . $remoteFieldName);
+
+        //identify by codice metodo
+        $filter = [];
+        $filter[] = [$remoteFieldName => $cacheItem->cod_c_f];
+
+        //try to load 2 of them - if there are more than one it is very BAD!!!
+        $arguments = [
+            "filter" => $filter,
+            "max_num" => 2,
+            "offset" => 0,
+            "fields" => "id",
+        ];
+        $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
+
+        if (count($result->records) == 1) {
+            /** @var \stdClass $remoteItem */
+            $account = $result->records[0];
+            //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
+            $account_id = $account->id;
+            if ($account_id) {
+                $this->log("Relating Offer(" . $remoteItem->id . ") to Account: " . $account_id);
+                $offerCrmId = $remoteItem->id;
+
+                try {
+                    $linkData = [
+                        "link_name" => 'mkt_offers_accounts',
+                        "ids" => [$offerCrmId]
+                    ];
+                    $result = $this->sugarCrmRest->comunicate(
+                        '/Accounts/' . $account_id . '/link', 'POST', $linkData
+                    );
+                    $this->log("LINKED: " . json_encode($result));
+                    $result = TRUE;
+                } catch(SugarCrmRestException $e) {
+                    //go ahead with false silently
+                    $this->log("REMOTE RELATIONSHIP ERROR!!! - " . $e->getMessage());
+                }
+
+            }
+        }
+
+        return $result;
+    }
+
 
     /**
      * They would be recreated all over again
@@ -794,5 +853,45 @@ class OfferData extends Sync implements SyncInterface {
             $this->localItemStatement = NULL;
         }
         return $item;
+    }
+
+
+    /**
+     * @param string $database
+     * @param string $codice
+     * @return string
+     * @throws \Exception
+     */
+    protected function getRemoteFieldNameForClienteDiFatturazione($database, $codice) {
+        $type = strtoupper(substr($codice, 0, 1));
+        switch ($database) {
+            case "IMP":
+                switch ($type) {
+                    case "C":
+                        $answer = "metodo_inv_cli_imp_c";
+                        break;
+                    case "F":
+                        $answer = "metodo_inv_sup_imp_c";
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
+                break;
+            case "MEKIT":
+                switch ($type) {
+                    case "C":
+                        $answer = "metodo_inv_cli_mekit_c";
+                        break;
+                    case "F":
+                        $answer = "metodo_inv_sup_mekit_c";
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
+                break;
+            default:
+                throw new \Exception("Local item needs to have database IMP|MEKIT!");
+        }
+        return $answer;
     }
 }
