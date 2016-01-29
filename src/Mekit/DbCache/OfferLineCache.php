@@ -57,6 +57,7 @@ class OfferLineCache extends CacheDb {
             $query .= ($local && $remote) ? ',' : '';
             if ($remote) {
                 $query .= " crm_last_update_time = '" . $oldDate->format("c") . "'";
+                $query .= ", crm_id = NULL";
             }
             $query .= ";";
             $statement = $this->db->prepare($query);
