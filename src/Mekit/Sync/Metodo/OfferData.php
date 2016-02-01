@@ -334,6 +334,7 @@ class OfferData extends Sync implements SyncInterface {
      * @param \stdClass $cacheItem
      * @param \stdClass $remoteItem
      * @return \stdClass|bool
+     * @throws \Exception
      */
     protected function relateOfferToAccountOnRemote($cacheItem, $remoteItem) {
         $result = FALSE;
@@ -378,6 +379,13 @@ class OfferData extends Sync implements SyncInterface {
                 }
 
             }
+        }
+        else {
+            $this->log("Cannot relate to Account!");
+            $this->log("FILTER:" . json_encode($filter));
+            $this->log("RESULT:" . json_encode($result));
+            //this is bad and should not happen - most probably accounts are not in sync
+            //anyhow do not kill app
         }
 
         return $result;
@@ -868,10 +876,10 @@ class OfferData extends Sync implements SyncInterface {
             case "IMP":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_inv_cli_imp_c";
+                        $answer = "metodo_client_code_imp_c";
                         break;
                     case "F":
-                        $answer = "metodo_inv_sup_imp_c";
+                        $answer = "metodo_supplier_code_imp_c";
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -880,10 +888,10 @@ class OfferData extends Sync implements SyncInterface {
             case "MEKIT":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_inv_cli_mekit_c";
+                        $answer = "metodo_client_code_mekit_c";
                         break;
                     case "F":
-                        $answer = "metodo_inv_sup_mekit_c";
+                        $answer = "metodo_supplier_code_mekit_c";
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
