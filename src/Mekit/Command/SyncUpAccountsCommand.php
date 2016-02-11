@@ -1,8 +1,8 @@
 <?php
 /**
  * Created by Adam Jakab.
- * Date: 07/10/15
- * Time: 17.35
+ * Date: 11/02/16
+ * Time: 11.51
  */
 
 namespace Mekit\Command;
@@ -13,9 +13,10 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SyncAccountsCommand extends Command implements CommandInterface {
-    const COMMAND_NAME = 'sync:accounts';
-    const COMMAND_DESCRIPTION = 'Synchronize Accounts';
+
+class SyncUpAccountsCommand extends Command implements CommandInterface {
+    const COMMAND_NAME = 'sync-up:accounts';
+    const COMMAND_DESCRIPTION = 'Synchronize Accounts CRM -> Metodo';
 
     public function __construct() {
         parent::__construct(NULL);
@@ -32,31 +33,7 @@ class SyncAccountsCommand extends Command implements CommandInterface {
                 new InputArgument(
                     'config_file', InputArgument::REQUIRED,
                     'The yaml(.yml) configuration file inside the "' . $this->configDir . '" subfolder.'
-                ),
-                new InputOption(
-                    'delete-cache', '', InputOption::VALUE_NONE,
-                    'Delete all cached data.'
-                ),
-                new InputOption(
-                    'invalidate-cache', '', InputOption::VALUE_NONE,
-                    'Reset timestamps on local and remote cache so that updates will occur again.'
-                ),
-                new InputOption(
-                    'invalidate-local-cache', '', InputOption::VALUE_NONE,
-                    'Reset timestamps on local cache so that updates will occur again.'
-                ),
-                new InputOption(
-                    'invalidate-remote-cache', '', InputOption::VALUE_NONE,
-                    'Reset timestamps on remote cache so that updates will occur again.'
-                ),
-                new InputOption(
-                    'update-cache', NULL, InputOption::VALUE_NONE,
-                    'Update local cache.'
-                ),
-                new InputOption(
-                    'update-remote', NULL, InputOption::VALUE_NONE,
-                    'Update remote.'
-                ),
+                )
             ]
         );
     }
@@ -70,8 +47,8 @@ class SyncAccountsCommand extends Command implements CommandInterface {
     protected function execute(InputInterface $input, OutputInterface $output) {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
-        $accountData = $this->getDataClass();
-        $accountData->execute($input->getOptions());
+//        $accountData = $this->getDataClass();
+//        $accountData->execute($input->getOptions());
         $this->log("Command " . static::COMMAND_NAME . " done.");
         return TRUE;
     }

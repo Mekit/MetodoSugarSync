@@ -7,15 +7,15 @@
 
 namespace Mekit\Command;
 
-use Mekit\Sync\Metodo\OfferData;
+use Mekit\Sync\MetodoToCrm\AccountData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SyncOffersCommand extends Command implements CommandInterface {
-    const COMMAND_NAME = 'sync:offers';
-    const COMMAND_DESCRIPTION = 'Synchronize Offers';
+class SyncDownAccountsCommand extends Command implements CommandInterface {
+    const COMMAND_NAME = 'sync-down:accounts';
+    const COMMAND_DESCRIPTION = 'Synchronize Accounts Metodo -> CRM';
 
     public function __construct() {
         parent::__construct(NULL);
@@ -35,11 +35,11 @@ class SyncOffersCommand extends Command implements CommandInterface {
                 ),
                 new InputOption(
                     'delete-cache', '', InputOption::VALUE_NONE,
-                    'Throw cache away?'
+                    'Delete all cached data.'
                 ),
                 new InputOption(
                     'invalidate-cache', '', InputOption::VALUE_NONE,
-                    'Reset timestamps on cache so that updates will occur again?'
+                    'Reset timestamps on local and remote cache so that updates will occur again.'
                 ),
                 new InputOption(
                     'invalidate-local-cache', '', InputOption::VALUE_NONE,
@@ -51,11 +51,11 @@ class SyncOffersCommand extends Command implements CommandInterface {
                 ),
                 new InputOption(
                     'update-cache', NULL, InputOption::VALUE_NONE,
-                    'Update local cache?'
+                    'Update local cache.'
                 ),
                 new InputOption(
                     'update-remote', NULL, InputOption::VALUE_NONE,
-                    'Update remote?'
+                    'Update remote.'
                 ),
             ]
         );
@@ -77,11 +77,11 @@ class SyncOffersCommand extends Command implements CommandInterface {
     }
 
     /**
-     * @return OfferData
+     * @return AccountData
      */
     protected function getDataClass() {
-        $class = "Mekit\\Sync\\Metodo\\OfferData";
-        /** @var OfferData $dataClass */
+        $class = "Mekit\\Sync\\MetodoToCrm\\AccountData";
+        /** @var AccountData $dataClass */
         $dataClass = new $class([$this, 'log']);
         return $dataClass;
     }

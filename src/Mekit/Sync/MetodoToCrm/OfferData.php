@@ -5,7 +5,7 @@
  * Time: 14.34
  */
 
-namespace Mekit\Sync\Metodo;
+namespace Mekit\Sync\MetodoToCrm;
 
 use Mekit\Console\Configuration;
 use Mekit\DbCache\OfferCache;

@@ -7,15 +7,15 @@
 
 namespace Mekit\Command;
 
-use Mekit\Sync\Metodo\ContactData;
+use Mekit\Sync\MetodoToCrm\OfferData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SyncContactsCommand extends Command implements CommandInterface {
-    const COMMAND_NAME = 'sync:contacts';
-    const COMMAND_DESCRIPTION = 'Synchronize Contacts';
+class SyncDownOffersCommand extends Command implements CommandInterface {
+    const COMMAND_NAME = 'sync-down:offers';
+    const COMMAND_DESCRIPTION = 'Synchronize Offers Metodo -> CRM';
 
     public function __construct() {
         parent::__construct(NULL);
@@ -70,18 +70,18 @@ class SyncContactsCommand extends Command implements CommandInterface {
     protected function execute(InputInterface $input, OutputInterface $output) {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
-        $contactData = $this->getDataClass();
-        $contactData->execute($input->getOptions());
+        $dataClass = $this->getDataClass();
+        $dataClass->execute($input->getOptions());
         $this->log("Command " . static::COMMAND_NAME . " done.");
         return TRUE;
     }
 
     /**
-     * @return ContactData
+     * @return OfferData
      */
     protected function getDataClass() {
-        $class = "Mekit\\Sync\\Metodo\\ContactData";
-        /** @var ContactData $dataClass */
+        $class = "Mekit\\Sync\\MetodoToCrm\\OfferData";
+        /** @var OfferData $dataClass */
         $dataClass = new $class([$this, 'log']);
         return $dataClass;
     }
