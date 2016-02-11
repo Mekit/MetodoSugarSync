@@ -13,10 +13,6 @@ class SugarCrmRest {
     /** @var  \stdClass */
     private $authToken;
 
-
-    public function __construct() {
-    }
-
     /**
      * @param string     $urlSuffix
      * @param string     $type

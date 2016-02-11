@@ -7,7 +7,7 @@
 
 namespace Mekit\Command;
 
-use Mekit\Sync\Metodo\AccountData;
+use Mekit\Sync\CrmToMetodo\AccountData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -47,8 +47,8 @@ class SyncUpAccountsCommand extends Command implements CommandInterface {
     protected function execute(InputInterface $input, OutputInterface $output) {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
-//        $accountData = $this->getDataClass();
-//        $accountData->execute($input->getOptions());
+        $dataClass = $this->getDataClass();
+        $dataClass->execute($input->getOptions());
         $this->log("Command " . static::COMMAND_NAME . " done.");
         return TRUE;
     }
@@ -57,7 +57,7 @@ class SyncUpAccountsCommand extends Command implements CommandInterface {
      * @return AccountData
      */
     protected function getDataClass() {
-        $class = "Mekit\\Sync\\Metodo\\AccountData";
+        $class = "Mekit\\Sync\\CrmToMetodo\\AccountData";
         /** @var AccountData $dataClass */
         $dataClass = new $class([$this, 'log']);
         return $dataClass;

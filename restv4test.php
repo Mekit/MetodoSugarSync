@@ -5,8 +5,8 @@
  * Time: 17.42
  */
 $url = "http://crm2.ingrossomaterialipulizia.it/service/v4_1/rest.php";
-$username = "restapi";
-$password = "restapi";
+$username = "tmpadmin";
+$password = "tmpadmin";
 
 //function to make cURL request
 function call($method, $parameters, $url) {
@@ -54,6 +54,11 @@ $login_parameters = array(
 
 $login_result = call("login", $login_parameters, $url);
 
+if (!isset($login_result->id)) {
+    print_r($login_result);
+    exit();
+}
+
 //get session id
 $session_id = $login_result->id;
 
@@ -84,12 +89,13 @@ $get_entry_list_parameters = array(
     */
     'link_name_to_fields_array' => array(),
     //The maximum number of results to return.
-    'max_results' => '3',
+    'max_results' => '1',
     //To exclude deleted records
     'deleted' => '0',
     //If only records marked as favorites should be returned.
     'Favorites' => FALSE,
 );
+//$get_entry_list_parameters["session"] = $session_id;
 
 $get_entry_list_result = call('get_entry_list', $get_entry_list_parameters, $url);
 
