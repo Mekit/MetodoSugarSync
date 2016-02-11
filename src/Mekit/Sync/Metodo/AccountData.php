@@ -9,8 +9,8 @@ namespace Mekit\Sync\Metodo;
 
 use Mekit\Console\Configuration;
 use Mekit\DbCache\AccountCache;
-use Mekit\SugarCrm\Rest\SugarCrmRest;
-use Mekit\SugarCrm\Rest\SugarCrmRestException;
+use Mekit\SugarCrm\Rest\v10\SugarCrmRest;
+use Mekit\SugarCrm\Rest\v10\SugarCrmRestException;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 use Monolog\Logger;

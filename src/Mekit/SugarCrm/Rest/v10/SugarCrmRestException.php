@@ -5,7 +5,7 @@
  * Time: 16.43
  */
 
-namespace Mekit\SugarCrm\Rest;
+namespace Mekit\SugarCrm\Rest\v10;
 
 /**
  * Class SugarCrmRestException

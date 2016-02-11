@@ -5,7 +5,7 @@
  * Time: 12.45
  */
 
-namespace Mekit\SugarCrm\Rest;
+namespace Mekit\SugarCrm\Rest\v10;
 
 use Mekit\Console\Configuration;
 
