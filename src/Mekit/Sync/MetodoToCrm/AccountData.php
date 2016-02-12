@@ -225,30 +225,6 @@ class AccountData extends Sync implements SyncInterface {
     }
 
     /**
-     * @param \stdClass $cacheItem
-     * @return array
-     * @throws \Exception
-     */
-    protected function getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem) {
-        $answer = [];
-        $fields = [
-            "metodo_client_code_imp_c",     //imp_metodo_client_code_c
-            "metodo_supplier_code_imp_c",   //imp_metodo_supplier_code_c
-            "metodo_client_code_mekit_c",   //mekit_metodo_client_code_c
-            "metodo_supplier_code_mekit_c"  //mekit_metodo_supplier_code_c
-        ];
-        foreach ($fields as $fieldName) {
-            if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
-                $answer[] = $fieldName;
-            }
-        }
-        if (!count($answer)) {
-            throw new \Exception("No non-empty field names can be found on cache item!");
-        }
-        return $answer;
-    }
-
-    /**
      * Remote(CRM) items cannot be identified by ID because if we reset cache table(removing remote crm_id reference)
      * They would be recreated all over again
      * @param \stdClass $cacheItem
@@ -675,20 +651,44 @@ class AccountData extends Sync implements SyncInterface {
     }
 
     /**
+     * @param \stdClass $cacheItem
+     * @return array
+     * @throws \Exception
+     */
+    protected function getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem) {
+        $answer = [];
+        $fields = [
+            "metodo_client_code_imp_c",     //imp_metodo_client_code_c
+            "metodo_supplier_code_imp_c",   //imp_metodo_supplier_code_c
+            "metodo_client_code_mekit_c",   //mekit_metodo_client_code_c
+            "metodo_supplier_code_mekit_c"  //mekit_metodo_supplier_code_c
+        ];
+        foreach ($fields as $fieldName) {
+            if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
+                $answer[] = $fieldName;
+            }
+        }
+        if (!count($answer)) {
+            throw new \Exception("No non-empty field names can be found on cache item!");
+        }
+        return $answer;
+    }
+
+    /**
      * @param string $database
      * @param string $type
      * @return string
      * @throws \Exception
      */
-    protected function getRemoteFieldNameForClienteDiFatturazione($database, $type) {
+    protected function getRemoteFieldNameForCodiceMetodo($database, $type) {
         switch ($database) {
             case "IMP":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_inv_cli_imp_c";
+                        $answer = "metodo_client_code_imp_c";       //imp_metodo_client_code_c
                         break;
                     case "F":
-                        $answer = "metodo_inv_sup_imp_c";
+                        $answer = "metodo_supplier_code_imp_c";     //imp_metodo_supplier_code_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -697,10 +697,10 @@ class AccountData extends Sync implements SyncInterface {
             case "MEKIT":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_inv_cli_mekit_c";
+                        $answer = "metodo_client_code_mekit_c";     //mekit_metodo_client_code_c
                         break;
                     case "F":
-                        $answer = "metodo_inv_sup_mekit_c";
+                        $answer = "metodo_supplier_code_mekit_c";   //mekit_metodo_supplier_code_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -718,15 +718,15 @@ class AccountData extends Sync implements SyncInterface {
      * @return string
      * @throws \Exception
      */
-    protected function getRemoteFieldNameForCodiceMetodo($database, $type) {
+    protected function getRemoteFieldNameForClienteDiFatturazione($database, $type) {
         switch ($database) {
             case "IMP":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_client_code_imp_c";
+                        $answer = "metodo_inv_cli_imp_c";       //imp_metodo_invoice_client_c
                         break;
                     case "F":
-                        $answer = "metodo_supplier_code_imp_c";
+                        $answer = "metodo_inv_sup_imp_c";       //imp_metodo_invoice_supplier_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -735,10 +735,10 @@ class AccountData extends Sync implements SyncInterface {
             case "MEKIT":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_client_code_mekit_c";
+                        $answer = "metodo_inv_cli_mekit_c";     //mekit_metodo_invoice_client_c
                         break;
                     case "F":
-                        $answer = "metodo_supplier_code_mekit_c";
+                        $answer = "metodo_inv_sup_mekit_c";     //mekit_metodo_invoice_supplier_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
