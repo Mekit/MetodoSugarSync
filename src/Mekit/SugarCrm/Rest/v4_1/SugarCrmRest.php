@@ -58,18 +58,20 @@ class SugarCrmRest {
             foreach ($relationshipListItem->link_list as $linkItem) {
                 if (count($linkItem->records)) {
                     $linkItemName = $linkItem->name;
-                    $linkItemValues = new \stdClass();
+                    $linkItemValues = [];
                     /** @var \stdClass $record */
                     foreach ($linkItem->records as $record) {
                         if (isset($record->link_value)) {
+                            $linkItemElement = new \stdClass();
                             foreach (get_object_vars($record->link_value) as $valueObjectKey => $valueObjectValue) {
                                 $k = $valueObjectValue->name;
                                 $v = $valueObjectValue->value;
-                                $linkItemValues->$k = $v;
+                                $linkItemElement->$k = $v;
                             }
+                            $linkItemValues[] = $linkItemElement;
                         }
                     }
-                    if (count(get_object_vars($linkItemValues))) {
+                    if (count($linkItemValues)) {
                         $answer->$linkItemName = $linkItemValues;
                     }
                 }

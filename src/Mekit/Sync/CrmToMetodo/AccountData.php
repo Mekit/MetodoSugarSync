@@ -9,10 +9,8 @@ namespace Mekit\Sync\CrmToMetodo;
 
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
-use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
-use Monolog\Logger;
 
 
 class AccountData extends Sync implements SyncInterface {
@@ -28,12 +26,41 @@ class AccountData extends Sync implements SyncInterface {
     /** @var array */
     protected $remoteDataOffset = 0;
 
+    /** @var array */
+    protected $flagCodeColumns = [
+        'imp_sync_as_client_c' => [
+            'codeColumn' => 'imp_metodo_client_code_c',
+            'database' => 'IMP',
+            'prefix' => 'C'
+        ],
+        'imp_sync_as_supplier_c' => [
+            'codeColumn' => 'imp_metodo_supplier_code_c',
+            'database' => 'IMP',
+            'prefix' => 'F'
+        ],
+        'mekit_sync_as_client_c' => [
+            'codeColumn' => 'mekit_metodo_client_code_c',
+            'database' => 'MEKIT',
+            'prefix' => 'C'
+        ],
+        'mekit_sync_as_supplier_c' => [
+            'codeColumn' => 'mekit_metodo_supplier_code_c',
+            'database' => 'MEKIT',
+            'prefix' => 'F'
+        ]
+    ];
+
+    /** @var  string */
+    protected $METODO_UTENTEMODIFICA;
+
     /**
      * @param callable $logger
      */
     public function __construct($logger) {
         parent::__construct($logger);
         $this->sugarCrmRest = new SugarCrmRest();
+        $cfg = Configuration::getConfiguration();
+        $this->METODO_UTENTEMODIFICA = $cfg["database"]['SERVER2K8']["username"];
     }
 
     /**
@@ -47,13 +74,373 @@ class AccountData extends Sync implements SyncInterface {
     protected function updateMetodoFromCrm() {
         $this->counters["remote"]["index"] = 0;
         while ($remoteItem = $this->getNextRemoteItem()) {
-            $this->log("\nREMOTE ITEM: " . json_encode($remoteItem));
+            $this->counters["remote"]["index"]++;
+            $this->saveRemoteItemInMetodoMain($remoteItem);
         }
     }
 
-    /*
+    /**
+     * The data present on the remoteItem (imp_sync_as_client_c, imp_sync_as_supplier_c...)
+     * should determin in which database and with what prefix (C|F) to save this remote item
+     * Save operation should be executed for each flag set
+     *
+     * If the corresponding code is set  (imp_sync_as_client_c -> imp_metodo_client_code_c)
+     * it means that Metodo already has this item so instead of INSERT we UPDATE
+     * @param \stdClass $remoteItem
+     */
+    protected function saveRemoteItemInMetodoMain($remoteItem) {
+        $this->log(
+            "-----------------------------------------------------------------------------------------"
+            . $this->counters["remote"]["index"]
+        );
+        $this->log("REMOTE ITEM: " . json_encode($remoteItem));
+        $operations = $this->getOperationsForRemoteItem($remoteItem);
+        if (count($operations)) {
+            foreach ($operations as &$operation) {
+                $operation = $this->saveRemoteItemInMetodo($remoteItem, $operation);
+                $this->log("\n\nOPERATION: " . json_encode($operation));
+            }
+            //operations array has been modified with result of save execution in 'success' key
+            //if true -> we need to push back the new CODES to CRM and UNSET the flags for sync
+            $this->updateRemoteItemWithOperationData($remoteItem, $operations);
+        }
+    }
 
-*/
+    /**
+     * @param \stdClass $remoteItem
+     * @param array     $operations
+     */
+    protected function updateRemoteItemWithOperationData($remoteItem, $operations) {
+        if (count($operations)) {
+            $nameValueList = [
+                ['name' => 'id', 'value' => $remoteItem->id]
+            ];
+            foreach ($operations as $operation) {
+                if ($operation['success']) {
+                    $codeColumnName = $operation['codeColumn'];
+                    $flagColumnName = $operation['flagColumn'];
+                    //reset operation flag so update does not occur again
+                    $nameValueList[] = ['name' => $flagColumnName, 'value' => 0];
+                    //set 'codiceMetodo' where INSERT operation was done
+                    if ($operation['sqlCommand'] == 'INSERT') {
+                        $nameValueList[] = ['name' => $codeColumnName, 'value' => $operation['CODCONTO']];
+                    }
+                }
+            }
+            $arguments = [
+                'module_name' => 'Accounts',
+                'name_value_list' => $nameValueList
+            ];
+            $result = $this->sugarCrmRest->comunicate('set_entry', $arguments);
+            $this->log("\n\nRemoteUpdateRes: " . json_encode($result));
+        }
+    }
+
+    /**
+     * @param \stdClass $remoteItem
+     * @param array     $operation
+     * @return array
+     */
+    protected function saveRemoteItemInMetodo($remoteItem, $operation) {
+        $operation['success'] = TRUE;
+        $operation['sql'] = [];
+        $operation['sql'][] = $this->getSaveSqlFor_ANAGRAFICACF($remoteItem, $operation);
+        $operation['sql'][] = $this->getSaveSqlFor_ANAGRAFICARISERVATICF($remoteItem, $operation);
+        $operation['sql'][] = $this->getSaveSqlFor_EXTRA_CLIENTI_FORNITORI($remoteItem, $operation);
+        $operation['sql'][] = $this->getSaveSqlFor_TP_EXTRA_CLIENTI_FORNITORI($remoteItem, $operation);
+        foreach ($operation['sql'] as $sql) {
+            $res = $this->executeSqlOnLocalDb($sql);
+            $operation['success'] = $operation['success'] && $res;
+        }
+        return $operation;
+    }
+
+    /**
+     * @param \stdClass $remoteItem
+     * @param array     $operation
+     * @return string
+     */
+    protected function getSaveSqlFor_TP_EXTRA_CLIENTI_FORNITORI($remoteItem, $operation) {
+        $answer = '';
+        $tableName = $operation['prefix'] == 'C' ? 'TP_EXTRACLIENTI' : 'TP_EXTRAFORNITORI';
+        $now = new \DateTime();
+        $tableData = [
+            'CODCONTO' => $operation['CODCONTO'],
+            //
+            'UTENTEMODIFICA' => $this->METODO_UTENTEMODIFICA,
+            'DATAMODIFICA' => $now->format("Y-m-d H:i:s"),
+        ];
+
+
+        if ($operation['sqlCommand'] == 'INSERT') {
+            $columnIndex = 1;
+            $columnNames = array_keys($tableData);
+            $maxColumns = count($columnNames);
+            $answer .= 'INSERT INTO [' . $operation['database'] . '].[dbo].[' . $tableName . ']';
+            $answer .= " (" . implode(",", $columnNames) . ")";
+            $answer .= " VALUES(";
+            foreach ($tableData as $columnName => $columnValue) {
+                $columnValueNorm = str_replace("'", "`", $columnValue);
+                $answer .= "'" . $columnValueNorm . "'" . ($columnIndex < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $answer .= ");";
+        }
+        else {
+            $answer .= "PRINT 'NO SYNC UPDATE OPERATION IS NECESSARY FOR TABLE: " . $tableName . "';";
+        }
+        return $answer;
+    }
+
+    /**
+     * @param \stdClass $remoteItem
+     * @param array     $operation
+     * @return string
+     */
+    protected function getSaveSqlFor_EXTRA_CLIENTI_FORNITORI($remoteItem, $operation) {
+        $answer = '';
+        $tableName = $operation['prefix'] == 'C' ? 'EXTRACLIENTI' : 'EXTRAFORNITORI';
+        $now = new \DateTime();
+        $tableData = [
+            'CODCONTO' => $operation['CODCONTO'],
+            //
+            'UTENTEMODIFICA' => $this->METODO_UTENTEMODIFICA,
+            'DATAMODIFICA' => $now->format("Y-m-d H:i:s"),
+        ];
+
+        if ($tableName == 'EXTRACLIENTI') {
+            //Only IMP has this field - it needs to be set to empty string otherwise it complains about invalid value
+            if ($operation['database'] == 'IMP') {
+                $tableData = array_merge(
+                    $tableData, [
+                    'CodiceAteco' => ''
+                ]
+                );
+            }
+        }
+
+
+        if ($operation['sqlCommand'] == 'INSERT') {
+            $columnIndex = 1;
+            $columnNames = array_keys($tableData);
+            $maxColumns = count($columnNames);
+            $answer .= 'INSERT INTO [' . $operation['database'] . '].[dbo].[' . $tableName . ']';
+            $answer .= " (" . implode(",", $columnNames) . ")";
+            $answer .= " VALUES(";
+            foreach ($tableData as $columnName => $columnValue) {
+                $columnValueNorm = str_replace("'", "`", $columnValue);
+                $answer .= "'" . $columnValueNorm . "'" . ($columnIndex < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $answer .= ");";
+        }
+        else {
+            $answer .= "PRINT 'NO SYNC UPDATE OPERATION IS NECESSARY FOR TABLE: " . $tableName . "';";
+        }
+        return $answer;
+    }
+
+    /**
+     * @param \stdClass $remoteItem
+     * @param array     $operation
+     * @return string
+     */
+    protected function getSaveSqlFor_ANAGRAFICARISERVATICF($remoteItem, $operation) {
+        $answer = '';
+        $tableName = 'ANAGRAFICARISERVATICF';
+        $now = new \DateTime();
+        $tableData = [
+            'CODCONTO' => $operation['CODCONTO'],
+            'ESERCIZIO' => $now->format("Y"),
+            //
+            'UTENTEMODIFICA' => $this->METODO_UTENTEMODIFICA,
+            'DATAMODIFICA' => $now->format("Y-m-d H:i:s"),
+        ];
+
+
+        if ($operation['sqlCommand'] == 'INSERT') {
+            $columnIndex = 1;
+            $columnNames = array_keys($tableData);
+            $maxColumns = count($columnNames);
+            $answer .= 'INSERT INTO [' . $operation['database'] . '].[dbo].[' . $tableName . ']';
+            $answer .= " (" . implode(",", $columnNames) . ")";
+            $answer .= " VALUES(";
+            foreach ($tableData as $columnName => $columnValue) {
+                $columnValueNorm = str_replace("'", "`", $columnValue);
+                $answer .= "'" . $columnValueNorm . "'" . ($columnIndex < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $answer .= ");";
+        }
+        else {
+            $answer .= "PRINT 'NO SYNC UPDATE OPERATION IS NECESSARY FOR TABLE: " . $tableName . "';";
+        }
+        return $answer;
+    }
+
+    /**
+     * @param \stdClass $remoteItem
+     * @param array     $operation
+     * @return string
+     */
+    protected function getSaveSqlFor_ANAGRAFICACF($remoteItem, $operation) {
+        $answer = '';
+        $tableName = 'ANAGRAFICACF';
+        $now = new \DateTime();
+        //E-mail - $remoteItem->email_addresses
+        //print_r($remoteItem->email_addresses);
+        $primaryEmailAddress = '';
+        if (isset($remoteItem->email_addresses) && is_array($remoteItem->email_addresses)
+            && count($remoteItem->email_addresses)
+        ) {
+            /** @var \stdClass $mailAddressObj */
+            foreach ($remoteItem->email_addresses as $mailAddressObj) {
+                if ($mailAddressObj->primary_address) {
+                    //looks like it is not set by crm
+                    $primaryEmailAddress = $mailAddressObj->email_address;
+                    break;
+                }
+            }
+            if (empty($primaryEmailAddress)) {
+                $primaryEmailAddress = $remoteItem->email_addresses[0]->email_address;
+            }
+        }
+        //
+        $tableData = [
+            'TIPOCONTO' => $operation['prefix'],
+            'CODCONTO' => $operation['CODCONTO'],
+            'DSCCONTO1' => $remoteItem->name,
+            'DSCCONTO2' => 'ANAGRAFICA INCOMPLETA',
+            'INDIRIZZO' => $remoteItem->billing_address_street,
+            'CAP' => $remoteItem->billing_address_postalcode,
+            'LOCALITA' => $remoteItem->billing_address_city,
+            'PROVINCIA' => $remoteItem->billing_address_state,
+            'TELEFONO' => $remoteItem->phone_office,
+            'FAX' => $remoteItem->phone_fax,
+            'TELEX' => $primaryEmailAddress,
+            'CODFISCALE' => $remoteItem->codice_fiscale_c,
+            'PARTITAIVA' => $remoteItem->vat_number_c,
+            'NOTE' => '',
+            'INDIRIZZOINTERNET' => $remoteItem->website,
+            //PREDEFINITI
+            'CODMASTRO' => ($operation['prefix'] == 'C' ? '1070' : '2050'),
+            'CODNAZIONE' => 0,
+            'CODICEISO' => 'IT',
+            'CODLINGUA' => 0,
+            //
+            'UTENTEMODIFICA' => $this->METODO_UTENTEMODIFICA,
+            'DATAMODIFICA' => $now->format("Y-m-d H:i:s"),
+        ];
+
+
+        if ($operation['sqlCommand'] == 'INSERT') {
+            $columnIndex = 1;
+            $columnNames = array_keys($tableData);
+            $maxColumns = count($columnNames);
+            $answer .= 'INSERT INTO [' . $operation['database'] . '].[dbo].[' . $tableName . ']';
+            $answer .= " (" . implode(",", $columnNames) . ")";
+            $answer .= " VALUES(";
+            foreach ($tableData as $columnName => $columnValue) {
+                $columnValueNorm = str_replace("'", "`", $columnValue);
+                $answer .= "'" . $columnValueNorm . "'" . ($columnIndex < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $answer .= ");";
+        }
+        else {
+            unset($tableData['TIPOCONTO']);
+            unset($tableData['CODCONTO']);
+            unset($tableData['DSCCONTO2']);
+            //unset($tableData['CODMASTRO']);
+            unset($tableData['CODNAZIONE']);
+            unset($tableData['CODICEISO']);
+            unset($tableData['CODLINGUA']);
+            $columnIndex = 1;
+            $columnNames = array_keys($tableData);
+            $maxColumns = count($columnNames);
+            $answer .= 'UPDATE [' . $operation['database'] . '].[dbo].[' . $tableName . ']';
+            $answer .= " SET ";
+            foreach ($tableData as $columnName => $columnValue) {
+                $columnValueNorm = str_replace("'", "`", $columnValue);
+                $answer .= $columnName . " = " . "'" . $columnValueNorm . "'" . ($columnIndex
+                                                                                 < $maxColumns ? ", " : "");
+                $columnIndex++;
+            }
+            $answer .= " WHERE CODCONTO = " . "'" . $operation['CODCONTO'] . "';";
+        }
+        return $answer;
+    }
+
+
+
+    /**
+     * @param \stdClass $remoteItem
+     * @return array
+     */
+    protected function getOperationsForRemoteItem($remoteItem) {
+        $answer = [];
+        /**
+         * @var string $flagColName
+         * @var array  $operationData
+         */
+        foreach ($this->flagCodeColumns as $flagColName => $operationData) {
+            if ($remoteItem->$flagColName == 1) {
+                $codeColumnName = $operationData['codeColumn'];
+                if (!empty($remoteItem->$codeColumnName)) {
+                    $operationData['sqlCommand'] = 'UPDATE';
+                    $operationData['CODCONTO'] = $remoteItem->$codeColumnName;
+                }
+                else {
+                    $operationData['sqlCommand'] = 'INSERT';
+                    $operationData['CODCONTO'] = $this->getNextCodiceMetodo($operationData['database'], $operationData['prefix']);
+                }
+                //I just add this so I do not have to search for it later in updateRemoteItemWithOperationData
+                $operationData['flagColumn'] = $flagColName;
+                $answer[] = $operationData;
+            }
+        }
+        return $answer;
+    }
+
+    /**
+     * @param string $sql
+     * @return bool
+     */
+    protected function executeSqlOnLocalDb($sql) {
+        $this->log("Excecuting SQL: " . $sql);
+        $db = Configuration::getDatabaseConnection("SERVER2K8");
+        $statement = $db->prepare($sql);
+        $answer = $statement->execute();
+        return $answer;
+    }
+
+
+    /**
+     * @param string $database
+     * @param string $prefix - C|F
+     * @return bool|string
+     */
+    protected function getNextCodiceMetodo($database, $prefix) {
+        $answer = FALSE;
+        $db = Configuration::getDatabaseConnection("SERVER2K8");
+        $sql = "SELECT TOP(1) (CAST(RIGHT(ACF.CODCONTO,6) AS INT) + 1) AS NUMERIC_ID
+            FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
+            WHERE ACF.CODCONTO LIKE '" . $prefix . "%'
+            AND ACF.CODCONTO NOT LIKE '" . $prefix . "9%'
+            ORDER BY NUMERIC_ID DESC;
+        ";
+        $statement = $db->prepare($sql);
+        $statement->execute();
+        $nextCodeNumber = $statement->fetch(\PDO::FETCH_COLUMN);
+        if ($nextCodeNumber) {
+            $maxCodeLenght = 7;
+            $numericCodeLength = strlen($nextCodeNumber);
+            $answer = $prefix . str_repeat(" ", $maxCodeLenght - 1 - $numericCodeLength) . $nextCodeNumber;
+        }
+        return $answer;
+    }
+
+
     /**
      * @return \stdClass|bool
      */
@@ -61,12 +448,26 @@ class AccountData extends Sync implements SyncInterface {
         $answer = FALSE;
         $arguments = [
             'module_name' => 'Accounts',
-            'query' => "accounts_cstm.imp_metodo_sync_up_c = 1 OR accounts_cstm.mekit_metodo_sync_up_c = 1",
+            'query' => "accounts_cstm.imp_sync_as_client_c = 1
+             OR accounts_cstm.imp_sync_as_supplier_c = 1
+             OR accounts_cstm.mekit_sync_as_client_c = 1
+             OR accounts_cstm.mekit_sync_as_supplier_c = 1
+             ",
             'order_by' => '',
             'offset' => $this->remoteDataOffset,
             'select_fields' => [
                 'id',
+                'imp_sync_as_client_c',
+                'imp_sync_as_supplier_c',
+                'mekit_sync_as_client_c',
+                'mekit_sync_as_supplier_c',
+                'imp_metodo_client_code_c',
+                'imp_metodo_supplier_code_c',
+                'mekit_metodo_client_code_c',
+                'mekit_metodo_supplier_code_c',
                 'name',
+                'vat_number_c',
+                'codice_fiscale_c',
                 'phone_office',
                 'phone_fax',
                 'billing_address_street',
@@ -74,7 +475,8 @@ class AccountData extends Sync implements SyncInterface {
                 'billing_address_city',
                 'billing_address_state',
                 'billing_address_country',
-                'website'
+                'website',
+
             ],
             'link_name_to_fields_array' => [
                 ['name' => 'email_addresses', 'value' => ['email_address', 'opt_out', 'primary_address']]
@@ -85,7 +487,6 @@ class AccountData extends Sync implements SyncInterface {
         ];
         /** @var \stdClass $result */
         $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
-        print_r($result);
         $entryListItem = (isset($result->entry_list) && isset($result->entry_list[0])) ? $result->entry_list[0] : NULL;
         $relationshipListItem = (isset($result->relationship_list)
                                  && isset($result->relationship_list[0])) ? $result->relationship_list[0] : NULL;
