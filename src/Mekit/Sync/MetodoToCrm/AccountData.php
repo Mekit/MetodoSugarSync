@@ -9,8 +9,8 @@ namespace Mekit\Sync\MetodoToCrm;
 
 use Mekit\Console\Configuration;
 use Mekit\DbCache\AccountCache;
-use Mekit\SugarCrm\Rest\v10\SugarCrmRest;
-use Mekit\SugarCrm\Rest\v10\SugarCrmRestException;
+use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
+use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 use Monolog\Logger;
@@ -85,15 +85,15 @@ class AccountData extends Sync implements SyncInterface {
         $this->log("updating remote...");
         $this->cacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
-        while ($cacheItem = $this->cacheDb->getNextItem()) {
+        while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC')) {
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveRemoteItem($cacheItem);
-            $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-            /*
+            //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+
             $this->log("REMOTE: " . json_encode($remoteItem));
-            if($this->counters["remote"]["index"] > 1) {
+            if ($this->counters["remote"]["index"] >= 1) {
                 break;
-            }*/
+            }
         }
     }
 
@@ -146,6 +146,8 @@ class AccountData extends Sync implements SyncInterface {
                 $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
                 return $result;
             }
+            $this->log("CRMID: " . $crm_id);
+            return;
 
             $syncItem = clone($cacheItem);
 
@@ -230,10 +232,10 @@ class AccountData extends Sync implements SyncInterface {
     protected function getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem) {
         $answer = [];
         $fields = [
-            "metodo_client_code_imp_c",
-            "metodo_supplier_code_imp_c",
-            "metodo_client_code_mekit_c",
-            "metodo_supplier_code_mekit_c"
+            "metodo_client_code_imp_c",     //imp_metodo_client_code_c
+            "metodo_supplier_code_imp_c",   //imp_metodo_supplier_code_c
+            "metodo_client_code_mekit_c",   //mekit_metodo_client_code_c
+            "metodo_supplier_code_mekit_c"  //mekit_metodo_supplier_code_c
         ];
         foreach ($fields as $fieldName) {
             if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
@@ -255,53 +257,56 @@ class AccountData extends Sync implements SyncInterface {
      */
     protected function loadRemoteItemId($cacheItem) {
         $crm_id = FALSE;
-        $filter = [];
+        $arguments = [
+            'module_name' => 'Accounts',
+            'query' => "",
+            'order_by' => "",
+            'offset' => 0,
+            'select_fields' => ['id'],
+            'link_name_to_fields_array' => [],
+            'max_results' => 2,
+            'deleted' => FALSE,
+            'Favorites' => FALSE,
+        ];
 
         //identify by codice metodo - the first one found
         $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
-        $fieldName = $fieldNames[0];
-        $filter[] = [$fieldName => $cacheItem->$fieldName];
-
-        //try to load 2 of them - if there are more than one it is very BAD!!!
-        if (count($filter)) {
-            $arguments = [
-                "filter" => $filter,
-                "max_num" => 2,
-                "offset" => 0,
-                "fields" => "id",
-            ];
-
-            $result = $this->sugarCrmRest->comunicate('/Accounts/filter', 'GET', $arguments);
-
-            if (isset($result) && isset($result->records)) {
-                if (count($result->records) > 1) {
-                    //This should never happen!!!
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(
-                        "There is a multiple correspondence for requested codes!"
-                        . json_encode($filter), Logger::ERROR, $result->records
-                    );
-                    $this->log("RESULTS: " . json_encode($result->records));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    throw new \Exception(
-                        "There is a multiple correspondence for requested codes!" . json_encode($filter)
-                    );
-                }
-                if (count($result->records) == 1) {
-                    /** @var \stdClass $remoteItem */
-                    $remoteItem = $result->records[0];
-                    //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
-                    $crm_id = $remoteItem->id;
-                }
-            }
-        }
-        else {
+        if (!count($fieldNames)) {
             //This should never happen!!!
-            throw new \Exception("CacheItem does not have usable code!");
+            throw new \Exception("CacheItem does not have usable code to get Crm ID!");
+        }
+        $codeFieldName = $fieldNames[0];
+        $codeFieldValue = $cacheItem->$codeFieldName;
+        $arguments['query'] = "accounts_cstm." . $codeFieldName . " = '" . $codeFieldValue . "'";
+
+        $this->log("IDENTIFYING CRMID BY: " . json_encode($arguments));
+
+        /** @var \stdClass $result */
+        $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
+        if (isset($result) && isset($result->entry_list)) {
+            if (count($result->entry_list) > 1) {
+                //This should never happen!!!
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(
+                    "There is a multiple correspondence for requested codes!"
+                    . json_encode($arguments), Logger::ERROR, $result->entry_list
+                );
+                $this->log("RESULTS: " . json_encode($result->entry_list));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                throw new \Exception(
+                    "There is a multiple correspondence for requested codes!" . json_encode($arguments)
+                );
+            }
+            if (count($result->entry_list) == 1) {
+                /** @var \stdClass $remoteItem */
+                $remoteItem = $result->entry_list[0];
+                //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
+                $crm_id = $remoteItem->id;
+            }
         }
         return ($crm_id);
     }
