@@ -241,6 +241,7 @@ class AccountData extends Sync implements SyncInterface {
     }
 
     /**
+     * @todo: codice agente
      * @param \stdClass $remoteItem
      * @param array     $operation
      * @return string
