@@ -38,6 +38,23 @@ class SugarCrmRest {
     }
 
     /**
+     * @param \stdClass $obj
+     * @return array
+     */
+    public function createNameValueListFromObject($obj) {
+        $answer = [];
+        $element = [];
+        foreach (get_object_vars($obj) as $key => $val) {
+            $element[] = [
+                "name" => $key,
+                "value" => $val
+            ];
+        }
+        $answer[] = $element;
+        return $answer;
+    }
+
+    /**
      * @param \stdClass $entryListItem
      * @param \stdClass $entryListItem
      * @return \stdClass

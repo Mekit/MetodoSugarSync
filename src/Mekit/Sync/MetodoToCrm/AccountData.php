@@ -146,10 +146,10 @@ class AccountData extends Sync implements SyncInterface {
                 $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
                 return $result;
             }
-            $this->log("CRMID: " . $crm_id);
-            return;
 
             $syncItem = clone($cacheItem);
+            unset($syncItem->crm_id);
+            unset($syncItem->id);
 
             //add payload to syncItem
             $payload = $this->getLocalItemPayload($cacheItem);
@@ -174,47 +174,44 @@ class AccountData extends Sync implements SyncInterface {
                 }
             }
             //add special data
-            $syncItem->profiling_c = FALSE;//"Da profilare"
+            $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
 
-
-            $this->log("CRM SYNC ITEM: " . json_encode($syncItem));
-
-
-
-            //UPDATE
+            //add id to sync item for update
             if ($crm_id) {
-                $this->log("updating remote($crm_id): " . $syncItem->name);
-                unset($syncItem->crm_id);
-                unset($syncItem->id);
-                try {
-                    $result = $this->sugarCrmRest->comunicate('/Accounts/' . $crm_id, 'PUT', $syncItem);
-                    $this->log("UPDATE REMOTE RESULT: " . json_encode($result));
-                } catch(SugarCrmRestException $e) {
-                    //go ahead with false silently
-                    $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
-                    //we must remove crm_id from $cacheItem
-                    //create fake result
-                    $result = new \stdClass();
-                    $result->updateFailure = TRUE;
-                }
+                $syncItem->id = $crm_id;
             }
-            else {
-                /*
-                 * @todo: check if 'crm_export_flag_c' is 0
-                 * if "0" check if account exists by P.IVA and if it does update it - if not skip
-                 * otherwise create
-                 */
-                //CREATE
-                $this->log("creating remote(" . $syncItem->name . ")...");
-                unset($syncItem->crm_id);
-                unset($syncItem->id);
-                try {
-                    $result = $this->sugarCrmRest->comunicate('/Accounts', 'POST', $syncItem);
-                    $this->log("CREATE REMOTE RESULT: " . json_encode($result));
-                } catch(SugarCrmRestException $e) {
-                    $this->log("REMOTE INSERT ERROR!!! - " . $e->getMessage());
-                }
+
+            //reformat date
+            $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+
+
+            //rename VAT NUMBER
+            $syncItem->vat_number_c = $syncItem->partita_iva_c;
+            unset($syncItem->partita_iva_c);
+
+
+            //$this->log("CRM SYNC ITEM: " . json_encode($syncItem));
+
+            //create arguments for rest
+            $arguments = [
+                'module_name' => 'Accounts',
+                'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
+            ];
+
+            $this->log("CRM SYNC ITEM: " . json_encode($arguments));
+
+            try {
+                $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
+                $this->log("UPDATE REMOTE RESULT: " . json_encode($result));
+            } catch(SugarCrmRestException $e) {
+                //go ahead with false silently
+                $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
+                //we must remove crm_id from $cacheItem
+                //create fake result
+                $result = new \stdClass();
+                $result->updateFailure = TRUE;
             }
+
         }
         else {
             //$this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
@@ -255,7 +252,7 @@ class AccountData extends Sync implements SyncInterface {
         $codeFieldValue = $cacheItem->$codeFieldName;
         $arguments['query'] = "accounts_cstm." . $codeFieldName . " = '" . $codeFieldValue . "'";
 
-        $this->log("IDENTIFYING CRMID BY: " . json_encode($arguments));
+        //$this->log("IDENTIFYING CRMID BY: " . json_encode($arguments));
 
         /** @var \stdClass $result */
         $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
@@ -531,10 +528,15 @@ class AccountData extends Sync implements SyncInterface {
         $items = [];
         foreach ($databases as $database) {
             $metodoCodes = [];
-            foreach ($fieldNames as $fieldName) {
-                if (preg_match("#^metodo_(client|supplier)_code_" . strtolower($database) . "_c$#", $fieldName)) {
+            foreach ($fieldNames as $fieldName) {//imp_metodo_client_code_c
+
+                if (preg_match("#^" . strtolower($database) . "_metodo_(client|supplier)_code_c$#", $fieldName)) {
                     $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
                 }
+
+//                if (preg_match("#^metodo_(client|supplier)_code_" . strtolower($database) . "_c$#", $fieldName)) {
+//                    $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
+//                }
             }
             if (count($metodoCodes)) {
                 $sql = "SELECT
@@ -658,10 +660,10 @@ class AccountData extends Sync implements SyncInterface {
     protected function getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem) {
         $answer = [];
         $fields = [
-            "metodo_client_code_imp_c",     //imp_metodo_client_code_c
-            "metodo_supplier_code_imp_c",   //imp_metodo_supplier_code_c
-            "metodo_client_code_mekit_c",   //mekit_metodo_client_code_c
-            "metodo_supplier_code_mekit_c"  //mekit_metodo_supplier_code_c
+            "imp_metodo_client_code_c",     //imp_metodo_client_code_c
+            "imp_metodo_supplier_code_c",   //imp_metodo_supplier_code_c
+            "mekit_metodo_client_code_c",   //mekit_metodo_client_code_c
+            "mekit_metodo_supplier_code_c"  //mekit_metodo_supplier_code_c
         ];
         foreach ($fields as $fieldName) {
             if (isset($cacheItem->$fieldName) && !empty($cacheItem->$fieldName)) {
@@ -685,10 +687,10 @@ class AccountData extends Sync implements SyncInterface {
             case "IMP":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_client_code_imp_c";       //imp_metodo_client_code_c
+                        $answer = "imp_metodo_client_code_c";       //imp_metodo_client_code_c
                         break;
                     case "F":
-                        $answer = "metodo_supplier_code_imp_c";     //imp_metodo_supplier_code_c
+                        $answer = "imp_metodo_supplier_code_c";     //imp_metodo_supplier_code_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -697,10 +699,10 @@ class AccountData extends Sync implements SyncInterface {
             case "MEKIT":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_client_code_mekit_c";     //mekit_metodo_client_code_c
+                        $answer = "mekit_metodo_client_code_c";     //mekit_metodo_client_code_c
                         break;
                     case "F":
-                        $answer = "metodo_supplier_code_mekit_c";   //mekit_metodo_supplier_code_c
+                        $answer = "mekit_metodo_supplier_code_c";   //mekit_metodo_supplier_code_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -723,10 +725,10 @@ class AccountData extends Sync implements SyncInterface {
             case "IMP":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_inv_cli_imp_c";       //imp_metodo_invoice_client_c
+                        $answer = "imp_metodo_invoice_client_c";       //imp_metodo_invoice_client_c
                         break;
                     case "F":
-                        $answer = "metodo_inv_sup_imp_c";       //imp_metodo_invoice_supplier_c
+                        $answer = "imp_metodo_invoice_supplier_c";       //imp_metodo_invoice_supplier_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");
@@ -735,10 +737,10 @@ class AccountData extends Sync implements SyncInterface {
             case "MEKIT":
                 switch ($type) {
                     case "C":
-                        $answer = "metodo_inv_cli_mekit_c";     //mekit_metodo_invoice_client_c
+                        $answer = "mekit_metodo_invoice_client_c";     //mekit_metodo_invoice_client_c
                         break;
                     case "F":
-                        $answer = "metodo_inv_sup_mekit_c";     //mekit_metodo_invoice_supplier_c
+                        $answer = "mekit_metodo_invoice_supplier_c";     //mekit_metodo_invoice_supplier_c
                         break;
                     default:
                         throw new \Exception("Local item needs to have Tipologia C|F!");

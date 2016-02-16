@@ -12,14 +12,22 @@ class AccountCache extends CacheDb {
     protected $columns = [
         'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
         'crm_id' => ['type' => 'TEXT', 'index' => FALSE],
-        'metodo_client_code_imp_c' => ['type' => 'TEXT', 'index' => TRUE],      //imp_metodo_client_code_c
-        'metodo_supplier_code_imp_c' => ['type' => 'TEXT', 'index' => TRUE],    //imp_metodo_supplier_code_c
-        'metodo_client_code_mekit_c' => ['type' => 'TEXT', 'index' => TRUE],    //mekit_metodo_client_code_c
-        'metodo_supplier_code_mekit_c' => ['type' => 'TEXT', 'index' => TRUE],  //mekit_metodo_supplier_code_c
-        'metodo_inv_cli_imp_c' => ['type' => 'TEXT', 'index' => FALSE],         //imp_metodo_invoice_client_c
-        'metodo_inv_sup_imp_c' => ['type' => 'TEXT', 'index' => FALSE],         //imp_metodo_invoice_supplier_c
-        'metodo_inv_cli_mekit_c' => ['type' => 'TEXT', 'index' => FALSE],       //mekit_metodo_invoice_client_c
-        'metodo_inv_sup_mekit_c' => ['type' => 'TEXT', 'index' => FALSE],       //mekit_metodo_invoice_supplier_c
+        'imp_metodo_client_code_c' => ['type' => 'TEXT', 'index' => TRUE],
+        //imp_metodo_client_code_c
+        'imp_metodo_supplier_code_c' => ['type' => 'TEXT', 'index' => TRUE],
+        //imp_metodo_supplier_code_c
+        'mekit_metodo_client_code_c' => ['type' => 'TEXT', 'index' => TRUE],
+        //mekit_metodo_client_code_c
+        'mekit_metodo_supplier_code_c' => ['type' => 'TEXT', 'index' => TRUE],
+        //mekit_metodo_supplier_code_c
+        'imp_metodo_invoice_client_c' => ['type' => 'TEXT', 'index' => FALSE],
+        //imp_metodo_invoice_client_c
+        'imp_metodo_invoice_supplier_c' => ['type' => 'TEXT', 'index' => FALSE],
+        //imp_metodo_invoice_supplier_c
+        'mekit_metodo_invoice_client_c' => ['type' => 'TEXT', 'index' => FALSE],
+        //mekit_metodo_invoice_client_c
+        'mekit_metodo_invoice_supplier_c' => ['type' => 'TEXT', 'index' => FALSE],
+        //mekit_metodo_invoice_supplier_c
         'partita_iva_c' => ['type' => 'TEXT', 'index' => TRUE],
         'codice_fiscale_c' => ['type' => 'TEXT', 'index' => TRUE],
         'crm_export_flag_c' => ['type' => 'TEXT', 'index' => FALSE],
