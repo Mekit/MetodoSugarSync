@@ -74,6 +74,11 @@ class ContactCache extends CacheDb {
         return $answer;
     }
 
+    /**
+     * @todo: remove me!
+     * @param $filter
+     * @return array|bool
+     */
     public function loadItemsOld($filter) {
         $answer = FALSE;
         try {
@@ -139,16 +144,7 @@ class ContactCache extends CacheDb {
             if ($remote) {
                 $query .= " crm_last_update_time_c = '" . $oldDate->format("c") . "'";
             }
-
-            //tmp - ONLY MEKIT - @todo: remove me!
-            if (TRUE && $remote) {
-                //$query .= " WHERE metodo_client_code_mekit_c IS NOT NULL";
-                //$query .= " WHERE id = '47cb57a10a837f35c5a0c1b3d90341fb'";
-                //
-            }
-
             $query .= ";";
-
 
             $statement = $this->db->prepare($query);
             $statement->execute();
