@@ -90,19 +90,14 @@ class ContactData extends Sync implements SyncInterface {
         $this->log("updating remote...");
         $this->contactCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
-        $registeredCodes = [];
         while ($cacheItem = $this->contactCacheDb->getNextItem()) {
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveRemoteItem($cacheItem);
             $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-//            $RC = $this->createRelationshipsForCompanies($cacheItem);
-//            $registeredCodes = array_merge($registeredCodes, $RC);
 //            if ($this->counters["remote"]["index"] >= 1) {
 //                break;
 //            }
         }
-        //this must stay outside of the loop
-        //$this->updateCrmDateOnCodes($registeredCodes);
     }
 
 

@@ -67,7 +67,7 @@ class RelAccCnt extends Sync implements SyncInterface {
         }
 
         if (isset($options["update-remote"]) && $options["update-remote"]) {
-            //$this->updateRemoteFromCache();
+            $this->updateRemoteFromCache();
         }
     }
 
@@ -88,6 +88,49 @@ class RelAccCnt extends Sync implements SyncInterface {
             }
         }
     }
+
+    protected function updateRemoteFromCache() {
+        $this->log("updating remote...");
+        $this->cacheDb->resetItemWalker();
+        $this->counters["remote"]["index"] = 0;
+        while ($cacheItem = $this->cacheDb->getNextItem()) {
+            $this->counters["remote"]["index"]++;
+            $remoteItem = $this->saveRemoteItem($cacheItem);
+            //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+            if ($this->counters["remote"]["index"] >= 1) {
+                break;
+            }
+        }
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @return \stdClass|bool
+     */
+    protected function saveRemoteItem($cacheItem) {
+        $result = FALSE;
+        $ISO = 'Y-m-d\TH:i:sO';
+        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
+        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
+
+        if ($metodoLastUpdate > $crmLastUpdate) {
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["remote"]["index"]
+            );
+            $this->log(json_encode($cacheItem));
+
+//            try {
+//                $crm_id = $this->loadRemoteItemId($cacheItem);
+//            } catch(\Exception $e) {
+//                $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+//                return $result;
+//            }
+        }
+
+        return FALSE;
+    }
+
 
     /**
      * @param \stdClass $localItem
