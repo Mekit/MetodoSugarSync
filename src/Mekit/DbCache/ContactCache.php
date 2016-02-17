@@ -16,12 +16,11 @@ class ContactCache extends CacheDb {
         'last_name' => ['type' => 'TEXT', 'index' => TRUE],
         'salutation' => ['type' => 'TEXT', 'index' => FALSE],
         'description' => ['type' => 'TEXT', 'index' => FALSE],
-        'email' => ['type' => 'TEXT', 'index' => TRUE],
+        'email1' => ['type' => 'TEXT', 'index' => TRUE],
         'phone_mobile' => ['type' => 'TEXT', 'index' => TRUE],
         'phone_work' => ['type' => 'TEXT', 'index' => FALSE],
         'phone_home' => ['type' => 'TEXT', 'index' => FALSE],
         'phone_fax' => ['type' => 'TEXT', 'index' => FALSE],
-        'title' => ['type' => 'TEXT', 'index' => FALSE],
         'crm_export_flag_c' => ['type' => 'TEXT', 'index' => FALSE],
         'metodo_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE],
         'crm_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE]
@@ -43,7 +42,7 @@ class ContactCache extends CacheDb {
     public function loadItems($filter) {
         $answer = FALSE;
         /* These fields contain json encoded multiple elements*/
-        $multipleDataFields = ['email'];
+        $multipleDataFields = [];
         try {
             if (count($filter)) {
                 $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";

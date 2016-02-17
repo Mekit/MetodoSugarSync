@@ -9,9 +9,8 @@ namespace Mekit\Sync\MetodoToCrm;
 
 use Mekit\Console\Configuration;
 use Mekit\DbCache\ContactCache;
-use Mekit\DbCache\ContactCodesCache;
-use Mekit\SugarCrm\Rest\v10\SugarCrmRest;
-use Mekit\SugarCrm\Rest\v10\SugarCrmRestException;
+use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
+use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 use Monolog\Logger;
@@ -26,9 +25,6 @@ class ContactData extends Sync implements SyncInterface {
     /** @var  ContactCache */
     protected $contactCacheDb;
 
-    /** @var  ContactCodesCache */
-    protected $contactCodesCacheDb;
-
     /** @var  \PDOStatement */
     protected $localItemStatement;
 
@@ -41,7 +37,6 @@ class ContactData extends Sync implements SyncInterface {
     public function __construct($logger) {
         parent::__construct($logger);
         $this->contactCacheDb = new ContactCache('Contact', $logger);
-        $this->contactCodesCacheDb = new ContactCodesCache('Contact_Codes', $logger);
         $this->sugarCrmRest = new SugarCrmRest();
     }
 
@@ -52,7 +47,6 @@ class ContactData extends Sync implements SyncInterface {
         //$this->log("EXECUTING..." . json_encode($options));
         if (isset($options["delete-cache"]) && $options["delete-cache"]) {
             $this->contactCacheDb->removeAll();
-            $this->contactCodesCacheDb->removeAll();
         }
 
         if (isset($options["invalidate-cache"]) && $options["invalidate-cache"]) {
@@ -69,7 +63,6 @@ class ContactData extends Sync implements SyncInterface {
 
         if (isset($options["update-cache"]) && $options["update-cache"]) {
             $this->updateLocalCache();
-            $this->cleanupOrphansFromLocalCache();
         }
 
         if (isset($options["update-remote"]) && $options["update-remote"]) {
@@ -83,15 +76,12 @@ class ContactData extends Sync implements SyncInterface {
     protected function updateLocalCache() {
         $this->log("updating local cache...");
         $this->counters["cache"]["index"] = 0;
-        foreach (["MEKIT", "IMP"] as $database) {
-            while ($localItem = $this->getNextLocalItem($database)) {
-                /*
-                if ($this->counters["cache"]["index"] == 100) {
-                    break;
-                }*/
-                $this->counters["cache"]["index"]++;
-                $this->saveLocalItemInCache($localItem);
-            }
+        while ($localItem = $this->getNextLocalItem()) {
+            $this->counters["cache"]["index"]++;
+            $this->saveLocalItemInCache($localItem);
+//            if ($this->counters["cache"]["index"] >= 1) {
+//                break;
+//            }
         }
     }
 
@@ -105,9 +95,9 @@ class ContactData extends Sync implements SyncInterface {
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveRemoteItem($cacheItem);
             $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-            $RC = $this->createRelationshipsForCompanies($cacheItem);
-            $registeredCodes = array_merge($registeredCodes, $RC);
-//            if ($this->counters["remote"]["index"] >= 50) {
+//            $RC = $this->createRelationshipsForCompanies($cacheItem);
+//            $registeredCodes = array_merge($registeredCodes, $RC);
+//            if ($this->counters["remote"]["index"] >= 1) {
 //                break;
 //            }
         }
@@ -124,7 +114,6 @@ class ContactData extends Sync implements SyncInterface {
             $cacheUpdateItem->id = $registeredCode;
             $now = new \DateTime();
             $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
-            $this->contactCodesCacheDb->updateItem($cacheUpdateItem);
             $this->log("UPDATED CACHE CODE DATE: " . $registeredCode);
         }
     }
@@ -280,7 +269,9 @@ class ContactData extends Sync implements SyncInterface {
                 $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
             }
             else {
-                $cacheUpdateItem->crm_id = $remoteItem->id;
+                $remoteItemIdList = $remoteItem->ids;
+                $remoteItemId = $remoteItemIdList[0];
+                $cacheUpdateItem->crm_id = $remoteItemId;
                 $now = new \DateTime();
                 $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
             }
@@ -311,65 +302,52 @@ class ContactData extends Sync implements SyncInterface {
                 return $result;
             }
 
+
             $syncItem = clone($cacheItem);
+            unset($syncItem->crm_id);
+            $syncItem->metodo_contact_code_c = $syncItem->id;
+            unset($syncItem->id);
+
 
             //modify sync item
-            if (!empty($syncItem->email)) {
-                $emailArray = json_decode($syncItem->email);
-                if (is_array($emailArray) && count($emailArray)) {
-                    $syncItem->email = [];
-                    $primary = TRUE;
-                    foreach ($emailArray as $email) {
-                        $syncItem->email[] = [
-                            "email_address" => $email,
-                            "invalid_email" => FALSE,
-                            "opt_out" => FALSE,
-                            "primary_address" => $primary,
-                            "reply_to_address" => FALSE
-                        ];
-                        $primary = FALSE;
-                    }
-                }
-            }
-            if (!empty($syncItem->salutation)) {
-                $syncItem->gender_c = "M";
-                if (in_array($syncItem->salutation, ['Sig.ra', 'Sig.na', 'Dott.ssa', 'Prof.ssa'])) {
-                    $syncItem->gender_c = "F";
-                }
+            //reformat date
+            $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+
+            $syncItem->gender_c = 2;
+            if (in_array($syncItem->salutation, [4, 8, 11, 12])) {
+                $syncItem->gender_c = 1;
             }
 
             //add special data
             $syncItem->profiling_c = FALSE;//"Da profilare"
 
-            //unset data
-            unset($syncItem->crm_id);
-            unset($syncItem->id);
+            //$this->log("CRM(remoteid: $crm_id) SYNC ITEM: " . json_encode($syncItem));
 
-
-            $this->log("CRM SYNC ITEM: " . json_encode($syncItem));
-
+            //add id to sync item for update
+            $restOperation = "INSERT";
             if ($crm_id) {
-                //UPDATE
-                $this->log("updating remote($crm_id): " . $syncItem->first_name . " " . $syncItem->last_name);
-                try {
-                    $result = $this->sugarCrmRest->comunicate('/Contacts/' . $crm_id, 'PUT', $syncItem);
-                } catch(SugarCrmRestException $e) {
-                    //go ahead with false silently
-                    $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
-                    //we must remove crm_id from $cacheItem
-                    //create fake result
-                    $result = new \stdClass();
-                    $result->updateFailure = TRUE;
-                }
+                $syncItem->id = $crm_id;
+                $restOperation = "UPDATE";
             }
-            else {
-                //CREATE
-                $this->log("creating remote: " . $syncItem->first_name . " " . $syncItem->last_name);
-                try {
-                    $result = $this->sugarCrmRest->comunicate('/Contacts', 'POST', $syncItem);
-                } catch(SugarCrmRestException $e) {
-                    $this->log("REMOTE INSERT ERROR!!! - " . $e->getMessage());
-                }
+
+            //create arguments for rest
+            $arguments = [
+                'module_name' => 'Contacts',
+                'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
+            ];
+
+            $this->log("CRM SYNC ITEM[" . $restOperation . "/" . $crm_id . "]: " . json_encode($arguments));
+
+            try {
+                $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
+                $this->log("REMOTE RESULT: " . json_encode($result));
+            } catch(SugarCrmRestException $e) {
+                //go ahead with false silently
+                $this->log("REMOTE ERROR!!! - " . $e->getMessage());
+                //we must remove crm_id from $cacheItem
+                //create fake result
+                $result = new \stdClass();
+                $result->updateFailure = TRUE;
             }
         }
         return $result;
@@ -384,126 +362,50 @@ class ContactData extends Sync implements SyncInterface {
      */
     protected function loadRemoteItemId($cacheItem) {
         $crm_id = FALSE;
-        $filter = [];
+        $arguments = [
+            'module_name' => 'Contacts',
+            'query' => "contacts_cstm.metodo_contact_code_c = '" . $cacheItem->id . "'",
+            'order_by' => "",
+            'offset' => 0,
+            'select_fields' => ['id'],
+            'link_name_to_fields_array' => [],
+            'max_results' => 2,
+            'deleted' => FALSE,
+            'Favorites' => FALSE,
+        ];
 
-        if (!empty($cacheItem->crm_id)) {
-            $filter[] = [
-                'id' => $cacheItem->crm_id
-            ];
-        }
-        else {
-            if (!empty($cacheItem->phone_mobile)) {
-                $filter[] = [
-                    'phone_mobile' => $cacheItem->phone_mobile
-                ];
+        //$this->log("IDENTIFYING CRMID BY: " . json_encode($arguments));
+
+        /** @var \stdClass $result */
+        $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
+        if (isset($result) && isset($result->entry_list)) {
+            if (count($result->entry_list) > 1) {
+                //This should never happen!!!
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(
+                    "There is a multiple correspondence for requested codes!"
+                    . json_encode($arguments), Logger::ERROR, $result->entry_list
+                );
+                $this->log("RESULTS: " . json_encode($result->entry_list));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                throw new \Exception(
+                    "There is a multiple correspondence for requested codes!" . json_encode($arguments)
+                );
             }
-            else if (!empty($cacheItem->first_name) && !empty($cacheItem->last_name)) {
-                $filter[] = [
-                    'first_name' => $cacheItem->first_name,
-                    'last_name' => $cacheItem->last_name
-                ];
+            if (count($result->entry_list) == 1) {
+                /** @var \stdClass $remoteItem */
+                $remoteItem = $result->entry_list[0];
+                //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
+                $crm_id = $remoteItem->id;
             }
-        }
-
-        //try to load 2 of them - if there are more than one we do not know which one to update
-        if (count($filter)) {
-            $arguments = [
-                "filter" => $filter,
-                "max_num" => 2,
-                "offset" => 0,
-                "fields" => "id",
-            ];
-
-            $result = $this->sugarCrmRest->comunicate('/Contacts/filter', 'GET', $arguments);
-
-            if (isset($result) && isset($result->records)) {
-
-                $this->log("IDSEARCH(" . json_encode($filter) . "): " . json_encode($result));
-
-                if (count($result->records) > 1) {
-                    //This should never happen!!!
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(
-                        "There is a multiple correspondence for requested codes!"
-                        . json_encode($filter), Logger::ERROR, $result->records
-                    );
-                    $this->log("RESULTS: " . json_encode($result->records));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    $this->log(str_repeat("-", 120));
-                    throw new \Exception(
-                        "There is a multiple correspondence for requested codes!" . json_encode($filter)
-                    );
-                }
-                if (count($result->records) == 1) {
-                    /** @var \stdClass $remoteItem */
-                    $remoteItem = $result->records[0];
-                    //$this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
-                    $crm_id = $remoteItem->id;
-                }
-            }
-        }
-        else {
-            //This happens when filter is empty
-            throw new \Exception("CacheItem does not have usable data for filter!");
         }
         return ($crm_id);
     }
 
-
-    /**
-     * check and remove:
-     * 1) contacts without codes:
-     * SELECT C.id AS ORPHAN FROM Contact AS C LEFT OUTER JOIN Contact_Codes AS CC ON C.id = CC.contact_id WHERE CC.id IS NULL;
-     *
-     * 2) codes without corresponding contact:
-     * SELECT CC.id AS ORPHAN FROM Contact_Codes AS CC LEFT OUTER JOIN Contact AS C ON CC.contact_id = C.id WHERE C.id IS NULL;
-     *
-     */
-    protected function cleanupOrphansFromLocalCache() {
-        $db = $this->contactCacheDb->getDb();
-        $tableNameContact = 'Contact';
-        $tableNameContactCodes = 'Contact_Codes';
-
-        //CONTACT ORPHANS
-        $query = "SELECT C.id FROM $tableNameContact AS C LEFT OUTER JOIN $tableNameContactCodes AS CC ON C.id = CC.contact_id WHERE CC.id IS NULL;";
-        $statement = $db->prepare($query);
-        if ($statement->execute()) {
-            $orphans = $statement->fetchAll(\PDO::FETCH_COLUMN);
-            if (count($orphans)) {
-                $orphans = array_map(
-                    function ($el) {
-                        return "'" . $el . "'";
-                    }, $orphans
-                );
-                $this->log("DELETING ORPHANED CONTACTS: " . count($orphans));
-                $query = "DELETE FROM $tableNameContact WHERE id IN (" . implode(",", $orphans) . ")";
-                $statement = $db->prepare($query);
-                $statement->execute();
-            }
-        }
-
-        //CODE ORPHANS
-        $query = "SELECT CC.id FROM $tableNameContactCodes AS CC LEFT OUTER JOIN $tableNameContact AS C ON CC.contact_id = C.id WHERE C.id IS NULL;";
-        $statement = $db->prepare($query);
-        if ($statement->execute()) {
-            $orphans = $statement->fetchAll(\PDO::FETCH_COLUMN);
-            if (count($orphans)) {
-                $this->log("ORPHANED CODES: " . count($orphans));
-                $orphans = array_map(
-                    function ($el) {
-                        return "'" . $el . "'";
-                    }, $orphans
-                );
-                $this->log("DELETING ORPHANED CODES: " . count($orphans));
-                $query = "DELETE FROM $tableNameContactCodes WHERE id IN (" . implode(",", $orphans) . ")";
-                $statement = $db->prepare($query);
-                $statement->execute();
-            }
-        }
-    }
 
     /**
      * @param \stdClass $localItem
@@ -511,7 +413,7 @@ class ContactData extends Sync implements SyncInterface {
      */
     protected function saveLocalItemInCache($localItem) {
         /** @var array|bool $operations */
-        $operations = FALSE;
+        $operation = FALSE;
 
         /** @var \stdClass $cachedItemContact */
         $cachedItemContact = FALSE;
@@ -519,255 +421,56 @@ class ContactData extends Sync implements SyncInterface {
         /** @var \stdClass $updateItemContact */
         $updateItemContact = FALSE;
 
-        /** @var \stdClass $cachedItemContactCodes */
-        $cachedItemContactCodes = FALSE;
-
-        /** @var \stdClass $updateItemContactCodes */
-        $updateItemContactCodes = FALSE;
-
-        /** @var string $identifiedBy */
-        $identifiedBy = FALSE;
-
         /** @var array $warnings */
         $warnings = [];
-
-        /** @var string $itemDb IMP|MEKIT */
-        $itemDb = $localItem->database;
 
         $this->log(
             "-----------------------------------------------------------------------------------------"
             . $this->counters["cache"]["index"]
         );
 
-
-        //get contact code
+        //get contact from cache by
         $filter = [
-            'database' => $itemDb,
-            'metodo_contact_code' => $localItem->metodoCombinedCode,
+            'id' => $localItem->id,
         ];
-        $codeCandidates = $this->contactCodesCacheDb->loadItems($filter);
+        $codeCandidates = $this->contactCacheDb->loadItems($filter);
+
         if ($codeCandidates && count($codeCandidates)) {
             if (count($codeCandidates) > 1) {
-                throw new \Exception("Multiple Codes for '" . $localItem->metodoCombinedCode . "' for db:$itemDb!");
+                throw new \Exception("Multiple Codes for '" . $localItem->id . "'!");
             }
-            $cachedItemContactCodes = $codeCandidates[0];
-            $updateItemContactCodes = clone($cachedItemContactCodes);
-            $operations["code"] = 'update';
-            //update role
-            $updateItemContactCodes->metodo_role = $localItem->role;
-            //
-            //if we have code get contact cache data right away
-            $contactId = $updateItemContactCodes->contact_id;
-            $filter = [
-                'id' => $contactId,
-            ];
-            $contactCandidates = $this->contactCacheDb->loadItems($filter);
-            if ($contactCandidates && count($contactCandidates)) {
-                $cachedItemContact = $contactCandidates[0];
-                $operations["contact"] = 'update';
-                $updateItemContact = clone($cachedItemContact);
-            }
+            $cachedItemContact = $codeCandidates[0];
+            $updateItemContact = clone($cachedItemContact);
+            $operation = 'update';
         }
         else {
-            //no code was found
-            $updateItemContactCodes = $this->generateNewContactCodeObject($localItem);
-            //$updateItemContactCodes->contact_id = $contactId; // - this will be assigned later
-            $updateItemContactCodes->database = $itemDb;
-            $updateItemContactCodes->metodo_contact_code = $localItem->metodoCombinedCode;
-            $updateItemContactCodes->metodo_code_company = $localItem->codiceMetodoAzienda;
-            $updateItemContactCodes->metodo_code_cf = $localItem->clienteDiFatturazione;
-            $updateItemContactCodes->metodo_role = $localItem->role;
-            $operations["code"] = 'insert';
+            $updateItemContact = clone($localItem);
+            $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+            $updateItemContact->crm_last_update_time_c = $oldDate->format("c");
+            $operation = 'insert';
         }
 
-        //search by: mobile phone
-        if (!$cachedItemContact) {
-            if (!empty($localItem->phone_mobile)) {
-                $filter = [
-                    'phone_mobile' => $localItem->phone_mobile
-                ];
-                $candidates = $this->contactCacheDb->loadItems($filter);
-                if ($candidates) {
-
-                    //control if we have a corresponding ClienteDiFatturazione for any of the candidates
-                    foreach ($candidates as $candidate) {
-                        $filter = [
-                            'contact_id' => $candidate->id,
-                            'database' => $itemDb,
-                            'metodo_code_cf' => $localItem->clienteDiFatturazione
-                        ];
-                        $codeCandidates = $this->contactCodesCacheDb->loadItems($filter);
-                        if ($codeCandidates && count($codeCandidates)) {
-                            $cachedItemContact = $candidate;
-                            $operations["contact"] = 'update';
-                            $updateItemContact = clone($cachedItemContact);
-                            $updateItemContactCodes->contact_id = $updateItemContact->id;
-                            break;
-                        }
-                    }
-
-                    //control if any of the candidates is identifiable by email
-                    foreach ($candidates as $candidate) {
-                        $emails = json_decode($candidate->email);
-                        if (in_array($localItem->email, $emails)) {
-                            $cachedItemContact = $candidate;
-                            $operations["contact"] = 'update';
-                            $updateItemContact = clone($cachedItemContact);
-                            $updateItemContactCodes->contact_id = $updateItemContact->id;
-                            break;
-                        }
-                    }
-
-                    /*
-                    $this->log("MOBILE CANDIDATES FOUND! " . json_encode($candidates));
-                    $this->log("LOCAL: " . json_encode($localItem));
-                    $this->log("CODES: " . json_encode($cachedItemContactCodes));
-                    $this->log("OPERATIONS: " . json_encode($operations));
-                    die("K");
-                    */
-                }
-
-                //contact has an unregistered mobile
-                if (!$cachedItemContact) {
-                    $cachedItemContact = $this->generateNewContactObject($localItem);
-                    $operations["contact"] = 'insert';
-                    $updateItemContact = clone($cachedItemContact);
-                    $updateItemContactCodes->contact_id = $updateItemContact->id;
-                }
-            }
-        }
-
-        //search by: first_name or last_name or both
-        if (!$cachedItemContact) {
-
-            $filter = [];
-            if (!empty($localItem->first_name)) {
-                $filter["first_name"] = $localItem->first_name;
-            }
-            if (!empty($localItem->last_name)) {
-                $filter["last_name"] = $localItem->last_name;
-            }
-            $candidates = $this->contactCacheDb->loadItems($filter);
-            if ($candidates) {
-
-                //control if we have a corresponding ClienteDiFatturazione for any of the candidates
-                foreach ($candidates as $candidate) {
-                    $filter = [
-                        'contact_id' => $candidate->id,
-                        'database' => $itemDb,
-                        'metodo_code_cf' => $localItem->clienteDiFatturazione
-                    ];
-                    $codeCandidates = $this->contactCodesCacheDb->loadItems($filter);
-                    if ($codeCandidates && count($codeCandidates)) {
-                        $cachedItemContact = $candidate;
-                        $operations["contact"] = 'update';
-                        $updateItemContact = clone($cachedItemContact);
-                        $updateItemContactCodes->contact_id = $updateItemContact->id;
-                        break;
-                    }
-                }
-                /*
-                $this->log("NAME CANDIDATES FOUND! " . json_encode($candidates));
-                $this->log("LOCAL: " . json_encode($localItem));
-                $this->log("CODES: " . json_encode($cachedItemContactCodes));
-                $this->log("OPERATIONS: " . json_encode($operations));
-                die("K");
-                */
-            }
-        }
-
-        //search by: email
-        if (!$cachedItemContact) {
-            $filter = [];
-            if (!empty($localItem->email)) {
-                $filter["email"] = $localItem->email;
-            }
-            $candidates = $this->contactCacheDb->loadItems($filter);
-            if ($candidates) {
-                /*
-                if (count($candidates) > 1) {
-                    throw new \Exception("Search by Email returned multiple results!");
-                }*/
-                $this->log("*** IDENTIFIED BY MAIL(" . $localItem->email . ") ***");
-                $cachedItemContact = $candidates[0];
-                $operations["contact"] = 'update';
-                $updateItemContact = clone($cachedItemContact);
-                $updateItemContactCodes->contact_id = $updateItemContact->id;
-            }
-        }
-
-
-        //all search failed - create new contact
-        if (!$cachedItemContact) {
-            $updateItemContact = $this->generateNewContactObject($localItem);
-            $operations["contact"] = 'insert';
-            $updateItemContactCodes->contact_id = $updateItemContact->id;
-        }
-
-        //update contact data
-
-        //mobile
-        if (!empty($localItem->phone_mobile)) {
-            $updateItemContact->phone_mobile = $localItem->phone_mobile;
-        }
-
-        //email
-        $updateItemContact->email =
-            $this->addElementToJsonData($updateItemContact->email, NULL, NULL, $localItem->email);
 
         //add other data on item only if localData is newer that cached data
-        $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->DataDiModifica);
+        $metodoLastUpdateTime = \DateTime::createFromFormat('Y-m-d H:i:s.u', $localItem->metodo_last_update_time_c);
         $updateItemLastUpdateTime = new \DateTime($updateItemContact->metodo_last_update_time_c);
-
         if ($metodoLastUpdateTime > $updateItemLastUpdateTime) {
-
-            $updateItemContact->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
-            $updateItemContactCodes->metodo_last_update_time_c = $metodoLastUpdateTime->format("c");
-
-            if (!empty($localItem->first_name)) {
-                if (empty($updateItemContact->first_name)) {
-                    $updateItemContact->first_name = $localItem->first_name;
+            foreach (get_object_vars($updateItemContact) as $k => $v) {
+                if (isset($localItem->$k)) {
+                    $updateItemContact->$k = $localItem->$k;
                 }
-            }
-            if (!empty($localItem->last_name)) {
-                if (empty($updateItemContact->last_name)) {
-                    $updateItemContact->last_name = $localItem->last_name;
-                }
-            }
-
-            if (!empty($localItem->salutation)) {
-                $updateItemContact->salutation = $localItem->salutation;
-            }
-            if (!empty($localItem->description)) {
-                $updateItemContact->description = $localItem->description;
-            }
-            if (!empty($localItem->phone_work)) {
-                $updateItemContact->phone_work = $localItem->phone_work;
-            }
-            if (!empty($localItem->phone_home)) {
-                $updateItemContact->phone_home = $localItem->phone_home;
-            }
-            if (!empty($localItem->phone_fax)) {
-                $updateItemContact->phone_fax = $localItem->phone_fax;
-            }
-            if (!empty($localItem->title)) {
-                $updateItemContact->title = $localItem->title;
             }
         }
 
         //DECIDE OPERATION - CODES
-        $operations["code"] = ($cachedItemContactCodes == $updateItemContactCodes) ? "skip" : $operations["code"];
-
-        //DECIDE OPERATION - CODES
-        $operations["contact"] = ($cachedItemContact == $updateItemContact) ? "skip" : $operations["contact"];
-
+        $operation = ($cachedItemContact == $updateItemContact) ? "skip" : $operation;
 
         //LOG
-        if ($operations["contact"] != "skip") {
-            $this->log("[" . $itemDb . "][" . json_encode($operations) . "][$identifiedBy]:");
+        if ($operation != "skip") {
+            $this->log("[" . $operation . "]:");
             $this->log("LOCAL: " . json_encode($localItem));
             //$this->log("CODES: " . json_encode($cachedItemContactCodes));
-            $this->log("CONTACT(C): " . json_encode($cachedItemContact));
+            //$this->log("CONTACT(C): " . json_encode($cachedItemContact));
             $this->log("CONTACT(U): " . json_encode($updateItemContact));
 
         }
@@ -777,35 +480,8 @@ class ContactData extends Sync implements SyncInterface {
             }
         }
 
-        //CHECK
-        if (!isset($operations["code"])) {
-            throw new \Exception("operations[code] NOT SET!");
-        }
-        if (!isset($operations["contact"])) {
-            throw new \Exception("operations[contact] NOT SET!");
-        }
-        /*
-        if (empty($updateItemContact->first_name) && empty($updateItemContact->last_name)) {
-            throw new \Exception("Both first and last names are empty!");
-        }*/
-
-
-        //INSERT / UPDATE CODES
-        switch ($operations["code"]) {
-            case "insert":
-                $this->contactCodesCacheDb->addItem($updateItemContactCodes);
-                break;
-            case "update":
-                $this->contactCodesCacheDb->updateItem($updateItemContactCodes);
-                break;
-            case "skip":
-                break;
-            default:
-                throw new \Exception("Code operation(" . $operations["code"] . ") is not implemented!");
-        }
-
         //INSERT / UPDATE CONTACT
-        switch ($operations["contact"]) {
+        switch ($operation) {
             case "insert":
                 $this->contactCacheDb->addItem($updateItemContact);
                 break;
@@ -851,64 +527,40 @@ class ContactData extends Sync implements SyncInterface {
 
 
     /**
-     * @param string $database IMP|MEKIT
      * @return bool|\stdClass
-     *
-     * @todo: importare anche quelli senza ruolo - come "RESP. CANTIERE"
      */
-    protected function getNextLocalItem($database) {
+    protected function getNextLocalItem() {
         if (!$this->localItemStatement) {
             $db = Configuration::getDatabaseConnection("SERVER2K8");
             $sql = "SELECT
-                TP.NOME AS first_name,
-                TP.COGNOME AS last_name,
-                TP.TITOLO AS salutation,
-                TP.NOTE AS description,
-                TP.EMAIL AS email,
-                TP.CELL AS phone_mobile,
-                TP.TELEFONO AS phone_work,
-                TP.TELCASA AS phone_home,
-                TP.FAX AS phone_fax,
-                TP.POSIZIONE AS title,
-                CASE WHEN NULLIF(TR.Descrizione, '') IS NOT NULL THEN TR.Descrizione ELSE 'NO-ROLE' END AS role,
-                TP.RIFCODCONTO AS codiceMetodoAzienda,
-                ACFR.CODCONTOFATT AS clienteDiFatturazione,
-                CONCAT(TP.RIFCODCONTO COLLATE DATABASE_DEFAULT, '-' COLLATE DATABASE_DEFAULT, TP.CODICE COLLATE DATABASE_DEFAULT) AS metodoCombinedCode,
-                TP.DATAMODIFICA AS DataDiModifica
-                FROM [$database].[dbo].[TABELLAPERSONALE] AS TP
-                LEFT JOIN [$database].[dbo].[TabellaRuoli] AS TR ON TP.CODRUOLO = TR.Codice
-                INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON TP.RIFCODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
-                WHERE (
-                (NULLIF(TP.NOME, '') IS NOT NULL AND NULLIF(TP.COGNOME, '') IS NOT NULL) OR
-                NULLIF(TP.EMAIL, '') IS NOT NULL OR
-                NULLIF(TP.CELL, '') IS NOT NULL
-                )
-                ORDER BY TP.CELL DESC, TP.RIFCODCONTO ASC, TP.COGNOME DESC, TP.NOME DESC
+                AN.IdContatto AS id,
+                AN.Cognome AS last_name,
+                AN.Nome AS first_name,
+                AN.Titolo AS salutation,
+                AN.Cellulare AS phone_mobile,
+                AN.TelUfficio AS phone_work,
+                AN.TelCasa AS phone_home,
+                AN.Fax AS phone_fax,
+                AN.Email AS email1,
+                AN.Note AS description,
+                AN.DataModifica AS metodo_last_update_time_c
+                FROM [Crm2Metodo].[dbo].[AnagraficaContatti] AS AN
                 ";
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
         }
         $item = $this->localItemStatement->fetch(\PDO::FETCH_OBJ);
         if ($item) {
-            $item->database = $database;
             $item->first_name = strtoupper(trim($item->first_name));
             $item->last_name = strtoupper(trim($item->last_name));
-            $item->salutation = $this->getSalutationFromCode((int) $item->salutation);
-            $item->email = strtolower(trim($item->email));
+            $item->email1 = strtolower(trim($item->email1));
             $item->phone_mobile = $this->normalizePhoneNumber($item->phone_mobile);
             $item->phone_work = $this->normalizePhoneNumber($item->phone_work);
             $item->phone_home = $this->normalizePhoneNumber($item->phone_home);
             $item->phone_fax = $this->normalizePhoneNumber($item->phone_fax);
-            $item->title = trim($item->title);
-            $item->role = trim($item->role);
 
-            //normalization (set RUOLO as last_name if both first_name and last_name fields are empty)
-            /*
-            if (empty($item->first_name) && empty($item->last_name)) {
-                $item->last_name = $item->role . ' - ' . $item->metodoCombinedCode;
-            }
-            */
-            //
+            $metodoLastUpdate = \DateTime::createFromFormat('Y-m-d H:i:s.u', $item->metodo_last_update_time_c);
+            $item->metodo_last_update_time_c = $metodoLastUpdate->format("c");
         }
         else {
             $this->localItemStatement = NULL;
@@ -969,6 +621,7 @@ class ContactData extends Sync implements SyncInterface {
     }
 
     /**
+     * UNUSED !?
      * @param int $code
      * @return string
      */

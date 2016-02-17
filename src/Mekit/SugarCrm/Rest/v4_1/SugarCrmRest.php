@@ -42,7 +42,6 @@ class SugarCrmRest {
      * @return array
      */
     public function createNameValueListFromObject($obj) {
-        $answer = [];
         $element = [];
         foreach (get_object_vars($obj) as $key => $val) {
             $element[] = [
@@ -50,7 +49,7 @@ class SugarCrmRest {
                 "value" => $val
             ];
         }
-        $answer[] = $element;
+        $answer = [$element];
         return $answer;
     }
 
@@ -172,6 +171,8 @@ class SugarCrmRest {
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 0);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);//timeout in seconds
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10); //timeout in seconds
 
         $restArguments = [];
         if ('login' != $method) {

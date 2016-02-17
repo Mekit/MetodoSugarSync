@@ -88,12 +88,10 @@ class AccountData extends Sync implements SyncInterface {
         while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC')) {
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveRemoteItem($cacheItem);
-            //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-
-            $this->log("REMOTE: " . json_encode($remoteItem));
-            if ($this->counters["remote"]["index"] >= 1) {
-                break;
-            }
+            $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+//            if ($this->counters["remote"]["index"] >= 15) {
+//                break;
+//            }
         }
     }
 
@@ -113,7 +111,9 @@ class AccountData extends Sync implements SyncInterface {
                 $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
             }
             else {
-                $cacheUpdateItem->crm_id = $remoteItem->id;
+                $remoteItemIdList = $remoteItem->ids;
+                $remoteItemId = $remoteItemIdList[0];
+                $cacheUpdateItem->crm_id = $remoteItemId;
                 $now = new \DateTime();
                 $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
             }
@@ -131,8 +131,6 @@ class AccountData extends Sync implements SyncInterface {
         //$metodoLastUpdate = new \DateTime();
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
-
-
 
         if ($metodoLastUpdate > $crmLastUpdate) {
             $this->log(
@@ -155,42 +153,57 @@ class AccountData extends Sync implements SyncInterface {
             $payload = $this->getLocalItemPayload($cacheItem);
             if ($payload) {
                 foreach ($payload as $key => $payloadData) {
-                    //special cases
-                    if ($key == "email") {
-                        $syncItem->$key = [
-                            [
-                                "email_address" => $payloadData,
-                                "invalid_email" => FALSE,
-                                "opt_out" => FALSE,
-                                "primary_address" => FALSE,
-                                "reply_to_address" => FALSE
-                            ]
-                        ];
-                        $syncItem->email1 = $payloadData;
+                    $syncItem->$key = $payloadData;
+
+                    //SPECIAL CASES
+
+                    //CODICE AGENTE (NO SPACES)
+                    if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c'])) {
+                        $syncItem->$key = $this->fixMetodoCode($payloadData, ['A'], TRUE);
                     }
-                    else {
-                        $syncItem->$key = $payloadData;
+
+                    //SETTORE IMP MEKIT  - CUSTOM FIELD NAMES
+                    //in $payload strtolower($database) . "_settore,
+                    if (in_array($key, ['imp_settore', 'mekit_settore'])) {
+                        $customKey = ($key == 'imp_settore' ? 'industry' : 'mekit_industry_c');
+                        $syncItem->$customKey = $payloadData;
+                        unset($syncItem->$key);
+                    }
+
+                    //DATI FATTURATO
+                    if (preg_match('#^(imp|mekit)_fatturato_#', $key, $m)) {
+                        $dbPrefix = $m[1];
+                        $customKey = FALSE;
+                        if ($dbPrefix == 'imp') {//fields are called without db - so removing imp_
+                            $customKey = str_replace('imp_', '', $key);
+                        }
+                        else if ($dbPrefix == 'mekit') {//fields are called mkt_... (not mekit_...)
+                            $customKey = str_replace('mekit_', 'mkt_', $key);
+                        }
+                        if ($customKey) {
+                            $syncItem->$customKey = $payloadData;
+                            unset($syncItem->$key);
+                        }
                     }
                 }
             }
-            //add special data
-            $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
-
-            //add id to sync item for update
-            if ($crm_id) {
-                $syncItem->id = $crm_id;
-            }
-
-            //reformat date
-            $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
-
 
             //rename VAT NUMBER
             $syncItem->vat_number_c = $syncItem->partita_iva_c;
             unset($syncItem->partita_iva_c);
 
+            //reformat date
+            $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
 
-            //$this->log("CRM SYNC ITEM: " . json_encode($syncItem));
+            //additional data
+            $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
+
+            //add id to sync item for update
+            $restOperation = "INSERT";
+            if ($crm_id) {
+                $syncItem->id = $crm_id;
+                $restOperation = "UPDATE";
+            }
 
             //create arguments for rest
             $arguments = [
@@ -198,20 +211,19 @@ class AccountData extends Sync implements SyncInterface {
                 'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
             ];
 
-            $this->log("CRM SYNC ITEM: " . json_encode($arguments));
+            $this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
 
             try {
                 $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-                $this->log("UPDATE REMOTE RESULT: " . json_encode($result));
+                $this->log("REMOTE RESULT: " . json_encode($result));
             } catch(SugarCrmRestException $e) {
                 //go ahead with false silently
-                $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
+                $this->log("REMOTE ERROR!!! - " . $e->getMessage());
                 //we must remove crm_id from $cacheItem
                 //create fake result
                 $result = new \stdClass();
                 $result->updateFailure = TRUE;
             }
-
         }
         else {
             //$this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
@@ -338,7 +350,11 @@ class AccountData extends Sync implements SyncInterface {
 
                 if (!$operation) {
                     //$operation = "insert";
-                    $identifiedBy = "PIVA";
+                    if (count($candidates) == 1) {
+                        $cachedItem = $candidates[0];
+                        $operation = "update";
+                        $identifiedBy = "PIVA";
+                    }
                 }
             }
         }
@@ -548,12 +564,45 @@ class AccountData extends Sync implements SyncInterface {
                     ACF.CODICEISO AS billing_address_country,
                     ACF.TELEFONO AS phone_office,
                     ACF.FAX AS phone_fax,
-                    ACF.TELEX AS email,
+                    ACF.TELEX AS email1,
                     ACF.INDIRIZZOINTERNET AS website,
-                    ACF.NOTE AS metodo_notes_" . strtolower($database) . "_c,
-                    ACFR.CODAGENTE1 AS " . strtolower($database) . "_agent_code_c
+                    ACF.NOTE AS " . strtolower($database) . "_metodo_notes_c,
+                    ACFR.CODAGENTE1 AS " . strtolower($database) . "_agent_code_c,
+                    ACFR.CODZONA AS zone_c,
+                    ACFR.CODSETTORE AS " . strtolower($database) . "_settore,
+
+
+                    FTDATA.F0 AS " . strtolower($database) . "_fatturato_storico_c,
+                    FTDATA.F1Anno AS " . strtolower($database) . "_fatturato_thisyear_1_c,
+                    FTDATA.F2Anno AS " . strtolower($database) . "_fatturato_thisyear_2_c,
+                    FTDATA.F3Anno AS " . strtolower($database) . "_fatturato_thisyear_3_c,
+                    FTDATA.F4Anno AS " . strtolower($database) . "_fatturato_thisyear_4_c,
+                    FTDATA.F5Anno AS " . strtolower($database) . "_fatturato_thisyear_5_c,
+                    FTDATA.F6Anno AS " . strtolower($database) . "_fatturato_thisyear_6_c,
+                    FTDATA.F7Anno AS " . strtolower($database) . "_fatturato_thisyear_7_c,
+                    FTDATA.F8Anno AS " . strtolower($database) . "_fatturato_thisyear_8_c,
+                    FTDATA.F9Anno AS " . strtolower($database) . "_fatturato_thisyear_9_c,
+                    FTDATA.F10Anno AS " . strtolower($database) . "_fatturato_thisyear_10_c,
+                    FTDATA.F11Anno AS " . strtolower($database) . "_fatturato_thisyear_11_c,
+                    FTDATA.F12Anno AS " . strtolower($database) . "_fatturato_thisyear_12_c,
+                    FTDATA.F1AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_1_c,
+                    FTDATA.F2AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_2_c,
+                    FTDATA.F3AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_3_c,
+                    FTDATA.F4AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_4_c,
+                    FTDATA.F5AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_5_c,
+                    FTDATA.F6AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_6_c,
+                    FTDATA.F7AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_7_c,
+                    FTDATA.F8AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_8_c,
+                    FTDATA.F9AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_9_c,
+                    FTDATA.F10AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_10_c,
+                    FTDATA.F11AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_11_c,
+                    FTDATA.F12AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_12_c
+
+
                     FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
-                    INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
+                    INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO
+                    AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
+                    LEFT JOIN [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA ON ACF.CODCONTO = FTDATA.CodiceMetodo
                     WHERE ACF.CODCONTO IN (" . implode(",", $metodoCodes) . ")
                     ";
                 $statement = $db->prepare($sql);
@@ -600,11 +649,13 @@ class AccountData extends Sync implements SyncInterface {
                 $answer = array_merge($answer, $item);
             }
 
+            /*
             if (count($items) > 1) {
-//                $this->log("-------------------------------------------------------------------------------------------------");
-//                $this->log("MERGED MULTIPLE PAYLOAD ITEMS(SORTED BY DATE): " . json_encode($items));
-//                $this->log("MERGE RESULT: " . json_encode($answer));
+                $this->log("-------------------------------------------------------------------------------------------------");
+                $this->log("MERGED MULTIPLE PAYLOAD ITEMS(SORTED BY DATE): " . json_encode($items));
+                $this->log("MERGE RESULT: " . json_encode($answer));
             }
+            */
         }
         return $answer;
     }
@@ -751,4 +802,37 @@ class AccountData extends Sync implements SyncInterface {
         }
         return $answer;
     }
+
+    /**
+     * @param string $originalCode
+     * @param array  $prefixes
+     * @param bool   $nospace - Do NOT space prefix from number - new crm cannot have spaces in dropdowns
+     * @return string
+     */
+    protected function fixMetodoCode($originalCode, $prefixes, $nospace = FALSE) {
+        $normalizedCode = '';
+        if (!empty($originalCode)) {
+            $codeLength = 7;
+            $normalizedCode = '';
+            $PREFIX = strtoupper(substr($originalCode, 0, 1));
+            $NUMBER = trim(substr($originalCode, 1));
+            $SPACES = '';
+            if (in_array($PREFIX, $prefixes)) {
+                if (0 != (int) $NUMBER) {
+                    if (!$nospace) {
+                        $SPACES = str_repeat(' ', $codeLength - strlen($PREFIX) - strlen($NUMBER));
+                    }
+                    $normalizedCode = $PREFIX . $SPACES . $NUMBER;
+                }
+                else {
+                    //$this->log("UNSETTING BAD CODE[not numeric]: '" . $originalCode . "'");
+                }
+            }
+            else {
+                //$this->log("UNSETTING BAD CODE[not C|F]: '" . $originalCode . "'");
+            }
+        }
+        return $normalizedCode;
+    }
+
 }
