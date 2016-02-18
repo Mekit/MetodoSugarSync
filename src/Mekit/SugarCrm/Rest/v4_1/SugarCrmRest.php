@@ -10,7 +10,9 @@ namespace Mekit\SugarCrm\Rest\v4_1;
 use Mekit\Console\Configuration;
 
 class SugarCrmRest {
+    /** @var string */
     private $sessionFileName = 'session_v4_1.sess';
+
     /** @var string */
     private $sessionId;
 
@@ -32,6 +34,7 @@ class SugarCrmRest {
                 //INVALID SESSION - Remove Session file
                 $sessionFilePath = $cfg["global"]["temporary_path"] . '/' . $this->sessionFileName;
                 unlink($sessionFilePath);
+                $this->sessionId = FALSE;
             }
         }
         return $result;

@@ -8,6 +8,8 @@
 namespace Mekit\Sync\MetodoToCrm;
 
 use Mekit\Console\Configuration;
+use Mekit\DbCache\AccountCache;
+use Mekit\DbCache\ContactCache;
 use Mekit\DbCache\RelAccCntCache;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
@@ -26,6 +28,12 @@ class RelAccCnt extends Sync implements SyncInterface {
     /** @var  RelAccCntCache */
     protected $cacheDb;
 
+    /** @var  AccountCache */
+    protected $accountCacheDb;
+
+    /** @var  ContactCache */
+    protected $contactCacheDb;
+
     /** @var  \PDOStatement */
     protected $localItemStatement;
 
@@ -37,6 +45,8 @@ class RelAccCnt extends Sync implements SyncInterface {
      */
     public function __construct($logger) {
         parent::__construct($logger);
+        $this->accountCacheDb = new AccountCache('Account', $logger);
+        $this->contactCacheDb = new ContactCache('Contact', $logger);
         $this->cacheDb = new RelAccCntCache('RelAccCnt', $logger);
         $this->sugarCrmRest = new SugarCrmRest();
     }
@@ -95,9 +105,9 @@ class RelAccCnt extends Sync implements SyncInterface {
         $this->counters["remote"]["index"] = 0;
         while ($cacheItem = $this->cacheDb->getNextItem()) {
             $this->counters["remote"]["index"]++;
-            $remoteItem = $this->saveRemoteItem($cacheItem);
-            //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-            if ($this->counters["remote"]["index"] >= 1) {
+            $relationshipResult = $this->saveRemoteRelationship($cacheItem);
+            $this->storeCrmIdForCachedItem($cacheItem, $relationshipResult);
+            if ($this->counters["remote"]["index"] >= 50) {
                 break;
             }
         }
@@ -105,30 +115,201 @@ class RelAccCnt extends Sync implements SyncInterface {
 
     /**
      * @param \stdClass $cacheItem
-     * @return \stdClass|bool
+     * @param array     $relationshipResult
      */
-    protected function saveRemoteItem($cacheItem) {
+    protected function storeCrmIdForCachedItem($cacheItem, $relationshipResult) {
+        if ($relationshipResult) {
+            $cacheUpdateItem = new \stdClass();
+            $cacheUpdateItem->id = $cacheItem->id;
+            if (!$relationshipResult['has_relationship']) {
+                //we must remove crm_id and reset crm_last_update_time_c on $cacheItem
+                $cacheUpdateItem->crm_account_id = NULL;
+                $cacheUpdateItem->crm_contact_id = NULL;
+                $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
+                $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
+            }
+            else {
+                if ($relationshipResult['is_new']) {
+                    $cacheUpdateItem->crm_account_id = $relationshipResult['account_id'];
+                    $cacheUpdateItem->crm_contact_id = $relationshipResult['contact_id'];
+                    $now = new \DateTime();
+                    $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
+                }
+                else {
+                    $cacheUpdateItem = FALSE;
+                }
+            }
+            if ($cacheUpdateItem) {
+                $this->log("UPDATING cache item: " . json_encode($cacheUpdateItem));
+                $this->cacheDb->updateItem($cacheUpdateItem);
+            }
+        }
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @return \array|bool
+     */
+    protected function saveRemoteRelationship($cacheItem) {
         $result = FALSE;
         $ISO = 'Y-m-d\TH:i:sO';
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
+
+        if (!$cacheItem->rel_table) {
+            $this->log("Warning! No Relationship table for: " . json_encode($cacheItem));
+            return FALSE;
+        }
 
         if ($metodoLastUpdate > $crmLastUpdate) {
             $this->log(
                 "-----------------------------------------------------------------------------------------"
                 . $this->counters["remote"]["index"]
             );
+
+
             $this->log(json_encode($cacheItem));
 
-//            try {
-//                $crm_id = $this->loadRemoteItemId($cacheItem);
-//            } catch(\Exception $e) {
-//                $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-//                return $result;
-//            }
-        }
+            try {
+                $relationship = $this->loadRemoteRelationship($cacheItem);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD RELATIONSHIP - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+                return $result;
+            }
 
-        return FALSE;
+            if ($relationship['has_relationship'] === TRUE) {
+                $result = $relationship;
+                $result['is_new'] = FALSE;
+                $this->log("Relationship already exists - SKIPPING");
+            }
+
+            if ($result == FALSE) {
+                $this->log("CREATING RELATIONSHIP FOR: " . json_encode($relationship));
+                $arguments = array(
+                    'module_name' => 'Accounts',
+                    'module_id' => $relationship['account_id'],
+                    'link_field_name' => $relationship['relationship_name'],
+                    'related_ids' => [$relationship['contact_id']],
+                    'name_value_list' => []
+                );
+                $relResult = $this->sugarCrmRest->comunicate('set_relationship', $arguments);
+                if ($relResult && isset($relResult->created) && $relResult->created == 1) {
+                    $result = $relationship;
+                    $result['has_relationship'] = TRUE;
+                    $result['is_new'] = TRUE;
+                    //$this->log("NEW RELATIONSHIP: " . json_encode($relResult));
+                }
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * They would be recreated all over again
+     * @param \stdClass $cacheItem
+     * @return array
+     * @throws \Exception
+     */
+    protected function loadRemoteRelationship($cacheItem) {
+        $answer = [
+            'account_id' => FALSE,
+            'contact_id' => FALSE,
+            'relationship_name' => FALSE,
+            'has_relationship' => FALSE
+        ];
+
+        //FIND ACCOUNT CRM ID FROM AccountCache
+        $filterFieldName = $this->getAccountCacheFieldNameForCodiceMetodo($cacheItem->database, $cacheItem->metodo_cf_id);
+        $filter = [
+            $filterFieldName => $cacheItem->metodo_cf_id,
+        ];
+        $accounts = $this->accountCacheDb->loadItems($filter);
+        if (count($accounts) > 1) {
+            throw new \Exception("Multiple cached Accounts found for: " . $cacheItem->metodo_cf_id);
+        }
+        if (!count($accounts)) {
+            throw new \Exception("No cached Accounts found for: " . $cacheItem->metodo_cf_id);
+        }
+        $account = $accounts[0];
+        if (!isset($account->crm_id) || empty($account->crm_id)) {
+            throw new \Exception("Cached Account does not have CRMID for: " . $cacheItem->metodo_cf_id);
+        }
+        $accountCrmId = $account->crm_id;
+        $answer['account_id'] = $accountCrmId;
+        //$this->log("CACHED ACCOUNT CRMID: " . $accountCrmId);
+
+        //FIND CONTACT CRM ID FROM ContactCache
+        $filter = [
+            'id' => $cacheItem->metodo_contact_id,
+        ];
+        $contacts = $this->contactCacheDb->loadItems($filter);
+        if (count($contacts) > 1) {
+            throw new \Exception("Multiple cached Contacts found for: " . $cacheItem->metodo_contact_id);
+        }
+        if (!count($contacts)) {
+            throw new \Exception("No cached Contacts found for: " . $cacheItem->metodo_contact_id);
+        }
+        $contact = $contacts[0];
+        if (!isset($contact->crm_id) || empty($contact->crm_id)) {
+            throw new \Exception("Cached Contact does not have CRMID for: " . $cacheItem->metodo_contact_id);
+        }
+        $contactCrmId = $contact->crm_id;
+        $answer['contact_id'] = $contactCrmId;
+        //$this->log("CACHED CONTACT CRMID: " . $contactCrmId);
+
+
+        //FIND ACCOUNT - CONTACT RELATIONSHIP
+        $answer['relationship_name'] = $cacheItem->rel_table;
+        $arguments = [
+            'module_name' => 'Accounts',
+            'query' => "accounts.id = '" . $accountCrmId . "'",
+            'order_by' => "",
+            'offset' => 0,
+            'select_fields' => ['id', 'name'],
+            'link_name_to_fields_array' => [
+                [
+                    'name' => $cacheItem->rel_table,
+                    'value' => ['id']
+                ]
+            ],
+            'max_results' => 2,
+            'deleted' => FALSE,
+            'Favorites' => FALSE,
+        ];
+
+        /** @var \stdClass $result */
+        $relResult = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
+        if ($relResult) {
+            if (isset($relResult->relationship_list)) {
+                if (count($relResult->relationship_list) > 1) {
+                    throw new \Exception("Multiple remote Relationships found for: " . json_encode($arguments));
+                }
+                if (count($relResult->relationship_list)) {
+                    $relList = $relResult->relationship_list[0];
+                    if (isset($relList->link_list)) {
+                        $relLinkList = $relList->link_list;
+                        foreach ($relLinkList as $relLink) {
+                            if ($relLink->name == $cacheItem->rel_table) {
+                                if (isset($relLink->records[0])) {
+                                    $relLink = $relLink->records[0];
+                                    if (isset($relLink->link_value)) {
+                                        $linkValue = $relLink->link_value;
+                                        if (isset($linkValue->id->value)) {
+                                            $linkValId = $linkValue->id->value;
+                                            if ($linkValId == $contactCrmId) {
+                                                $answer['has_relationship'] = TRUE;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        //$this->log("REMOTE REL: " . json_encode($relResult));
+        return $answer;
     }
 
 
@@ -159,6 +340,7 @@ class RelAccCnt extends Sync implements SyncInterface {
             'metodo_contact_id' => $localItem->metodo_contact_id,
             'metodo_cf_id' => $localItem->metodo_cf_id,
             'metodo_role_id' => $localItem->metodo_role_id,
+            'database' => $localItem->database,
         ];
         $candidates = $this->cacheDb->loadItems($filter);
 
@@ -253,6 +435,7 @@ class RelAccCnt extends Sync implements SyncInterface {
                     "WARNING! - Contact without a role(db: $database) in " . $item->metodo_cf_id, Logger::CRITICAL
                 );
             }
+            $item->database = $database;
             $metodoLastUpdate = \DateTime::createFromFormat('Y-m-d H:i:s.u', $item->metodo_last_update_time_c);
             $item->metodo_last_update_time_c = $metodoLastUpdate->format("c");
         }
@@ -260,6 +443,45 @@ class RelAccCnt extends Sync implements SyncInterface {
             $this->localItemStatement = NULL;
         }
         return $item;
+    }
+
+    /**
+     * @param string $database
+     * @param string $code
+     * @return string
+     * @throws \Exception
+     */
+    protected function getAccountCacheFieldNameForCodiceMetodo($database, $code) {
+        $type = strtoupper(substr($code, 0, 1));
+        switch ($database) {
+            case "IMP":
+                switch ($type) {
+                    case "C":
+                        $answer = "imp_metodo_client_code_c";       //imp_metodo_client_code_c
+                        break;
+                    case "F":
+                        $answer = "imp_metodo_supplier_code_c";     //imp_metodo_supplier_code_c
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
+                break;
+            case "MEKIT":
+                switch ($type) {
+                    case "C":
+                        $answer = "mekit_metodo_client_code_c";     //mekit_metodo_client_code_c
+                        break;
+                    case "F":
+                        $answer = "mekit_metodo_supplier_code_c";   //mekit_metodo_supplier_code_c
+                        break;
+                    default:
+                        throw new \Exception("Local item needs to have Tipologia C|F!");
+                }
+                break;
+            default:
+                throw new \Exception("Local item needs to have database IMP|MEKIT!");
+        }
+        return $answer;
     }
 
 

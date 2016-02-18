@@ -11,6 +11,7 @@ class RelAccCntCache extends CacheDb {
     /** @var array */
     protected $columns = [
         'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
+        'database' => ['type' => 'TEXT', 'index' => TRUE],
         'metodo_contact_id' => ['type' => 'TEXT', 'index' => TRUE],
         'metodo_cf_id' => ['type' => 'TEXT', 'index' => TRUE],
         'metodo_role_id' => ['type' => 'TEXT', 'index' => TRUE],
