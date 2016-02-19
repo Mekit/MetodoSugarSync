@@ -9,18 +9,21 @@ USAGE - CRON
 USAGE(METODO->CRM) - ACCOUNTS
 -----------------------------
 ./console sync-down:accounts accounts_down.yml --update-cache
+
 ./console sync-down:accounts accounts_down.yml --update-remote
 
 
 USAGE(METODO->CRM) - CONTACTS
 -----------------------------
 ./console sync-down:contacts contacts_down.yml --update-cache
+
 ./console sync-down:contacts contacts_down.yml --update-remote
 
 
 USAGE(METODO->CRM) - RELATIONSHIP ACCOUNTS - CONTACTS
 ------------------------------------------------------
 ./console sync-down:rel-acc-cnt rel_acc_cnt_down.yml --update-cache
+
 ./console sync-down:rel-acc-cnt rel_acc_cnt_down.yml --update-remote
 
 
