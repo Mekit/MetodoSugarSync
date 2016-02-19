@@ -695,7 +695,14 @@ class AccountData extends Sync implements SyncInterface {
         if ($item) {
             $item->CodiceMetodo = trim($item->CodiceMetodo);
             $item->database = $database;
-            $item->RagioneSociale = $item->Nome1 . (!empty($item->Nome2) ? ' - ' . $item->Nome2 : '');
+
+            //the field 'DSCCONTO2' is set to 'ANAGRAFICA INCOMPLETA' when inserting new CF in Metodo
+            //This should NOT be part of the name of the Account
+            $item->RagioneSociale = $item->Nome1;
+            if (!empty($item->Nome2) && $item->Nome2 != 'ANAGRAFICA INCOMPLETA') {
+                $item->RagioneSociale .= ' - ' . $item->Nome2;
+            }
+
         }
         else {
             $this->localItemStatement = NULL;

@@ -311,7 +311,6 @@ class AccountData extends Sync implements SyncInterface {
             'TIPOCONTO' => $operation['prefix'],
             'CODCONTO' => $operation['CODCONTO'],
             'DSCCONTO1' => $remoteItem->name,
-            'DSCCONTO2' => 'ANAGRAFICA INCOMPLETA',
             'INDIRIZZO' => $remoteItem->billing_address_street,
             'CAP' => $remoteItem->billing_address_postalcode,
             'LOCALITA' => $remoteItem->billing_address_city,
@@ -333,6 +332,9 @@ class AccountData extends Sync implements SyncInterface {
             'DATAMODIFICA' => $now->format("Y-m-d H:i:s"),
         ];
 
+        if ($operation['sqlCommand'] == 'INSERT') {
+            $tableData['DSCCONTO2'] = 'ANAGRAFICA INCOMPLETA';
+        }
 
         if ($operation['sqlCommand'] == 'INSERT') {
             $columnIndex = 1;
