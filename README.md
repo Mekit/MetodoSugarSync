@@ -25,7 +25,9 @@ USAGE(CRM->METODO) - ACCOUNTS
 ./console sync-up:accounts accounts_up.yml
 
 
-
+USAGE(CRM->METODO) - CONTACTS
+-----------------------------
+./console sync-up:contacts contacts_up.yml
 
 
 

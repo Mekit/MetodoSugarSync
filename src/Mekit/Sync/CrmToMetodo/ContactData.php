@@ -22,9 +22,6 @@ class ContactData extends Sync implements SyncInterface {
     /** @var array */
     protected $counters = [];
 
-    /** @var array */
-    protected $remoteDataOffset = 0;
-
     /** @var  string */
     protected $METODO_UTENTEMODIFICA;
 
@@ -249,7 +246,7 @@ class ContactData extends Sync implements SyncInterface {
             'module_name' => 'Contacts',
             'query' => "contacts_cstm.metodo_sync_up_c = 1",
             'order_by' => '',
-            'offset' => $this->remoteDataOffset,
+            'offset' => 0,
             'select_fields' => [
                 'id',
                 'metodo_sync_up_c',
@@ -276,10 +273,6 @@ class ContactData extends Sync implements SyncInterface {
                                  && isset($result->relationship_list[0])) ? $result->relationship_list[0] : NULL;
         if ($entryListItem) {
             $answer = $this->sugarCrmRest->getNameValueListFromEntyListItem($entryListItem, $relationshipListItem);
-            $this->remoteDataOffset = $result->next_offset;
-        }
-        else {
-            $this->remoteDataOffset = 0;
         }
         return $answer;
     }
