@@ -243,7 +243,7 @@ class RelAccCnt extends Sync implements SyncInterface {
             throw new \Exception("Multiple cached Contacts found for: " . $cacheItem->metodo_contact_id);
         }
         if (!count($contacts)) {
-            throw new \Exception("No cached Contacts found for: " . $cacheItem->metodo_contact_id);
+            throw new \Exception("No cached Contacts found for: " . json_encode($cacheItem));
         }
         $contact = $contacts[0];
         if (!isset($contact->crm_id) || empty($contact->crm_id)) {
@@ -326,11 +326,6 @@ class RelAccCnt extends Sync implements SyncInterface {
         /** @var array $warnings */
         $warnings = [];
 
-        $this->log(
-            "-----------------------------------------------------------------------------------------"
-            . $this->counters["cache"]["index"]
-        );
-
         //get contact from cache by
         $filter = [
             'metodo_contact_id' => $localItem->metodo_contact_id,
@@ -376,10 +371,14 @@ class RelAccCnt extends Sync implements SyncInterface {
 
         //LOG
         if ($operation != "skip") {
-            $this->log("[" . $operation . "]:");
-            $this->log("LOCAL: " . json_encode($localItem));
-            $this->log("CONTACT(C): " . json_encode($cachedItem));
-            $this->log("CONTACT(U): " . json_encode($updateItem));
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["cache"]["index"]
+            );
+            //$this->log("[" . $operation . "]:");
+            //$this->log("LOCAL: " . json_encode($localItem));
+            //$this->log("CONTACT(C): " . json_encode($cachedItem));
+            //$this->log("CONTACT(U): " . json_encode($updateItem));
 
         }
         if (!empty($warnings)) {

@@ -2,6 +2,28 @@ Metodo SugarCRM Sync
 =====================
 
 
+USAGE(METODO->CRM) - ACCOUNTS
+-----------------
+./console sync-down:accounts accounts_down.yml --update-cache
+./console sync-down:accounts accounts_down.yml --update-remote
+
+
+USAGE(METODO->CRM) - CONTACTS
+-----------------
+./console sync-down:contacts contacts_down.yml --update-cache
+./console sync-down:contacts contacts_down.yml --update-remote
+
+
+USAGE(METODO->CRM) - RELATIONSHIP ACCOUNTS - CONTACTS
+-----------------------------------------
+./console sync-down:rel-acc-cnt rel_acc_cnt_down.yml --update-cache
+./console sync-down:rel-acc-cnt rel_acc_cnt_down.yml --update-remote
+
+
+
+
+
+
 1) Install the packages
 ---------------------
     apt-get install freetds-bin freetds-common tdsodbc odbcinst php5-odbc unixodbc
