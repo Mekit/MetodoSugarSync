@@ -89,6 +89,9 @@ class SyncCronCommand extends Command implements CommandInterface {
             $this->lastCommandExecutionCheckTime = $now;
             //
             $cfg = Configuration::getConfiguration();
+
+            //$this->log("CMD LIST: " . json_encode($cfg["commands"]));
+
             if (isset($cfg["commands"]) && count($cfg["commands"])) {
                 foreach ($cfg["commands"] as $command) {
                     if (!array_key_exists($command["name"], $this->executionList)) {

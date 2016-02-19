@@ -13,6 +13,10 @@ use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Parser;
 
+/**
+ * Class Configuration
+ * @package Mekit\Console
+ */
 class Configuration {
     /** @var  string */
     private static $configurationFilePath;
