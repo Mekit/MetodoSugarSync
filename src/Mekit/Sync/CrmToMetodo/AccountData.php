@@ -24,9 +24,6 @@ class AccountData extends Sync implements SyncInterface {
     protected $counters = [];
 
     /** @var array */
-    protected $remoteDataOffset = 0;
-
-    /** @var array */
     protected $flagCodeColumns = [
         'imp_sync_as_client_c' => [
             'codeColumn' => 'imp_metodo_client_code_c',
@@ -67,7 +64,6 @@ class AccountData extends Sync implements SyncInterface {
      * @param array $options
      */
     public function execute($options) {
-        //$this->log("EXECUTING..." . json_encode($options));
         $this->updateMetodoFromCrm();
     }
 
@@ -457,7 +453,7 @@ class AccountData extends Sync implements SyncInterface {
              OR accounts_cstm.mekit_sync_as_supplier_c = 1
              ",
             'order_by' => '',
-            'offset' => $this->remoteDataOffset,
+            'offset' => 0,
             'select_fields' => [
                 'id',
                 'imp_sync_as_client_c',
@@ -479,7 +475,6 @@ class AccountData extends Sync implements SyncInterface {
                 'billing_address_state',
                 'billing_address_country',
                 'website',
-
             ],
             'link_name_to_fields_array' => [
                 ['name' => 'email_addresses', 'value' => ['email_address', 'opt_out', 'primary_address']]
@@ -495,10 +490,6 @@ class AccountData extends Sync implements SyncInterface {
                                  && isset($result->relationship_list[0])) ? $result->relationship_list[0] : NULL;
         if ($entryListItem) {
             $answer = $this->sugarCrmRest->getNameValueListFromEntyListItem($entryListItem, $relationshipListItem);
-            $this->remoteDataOffset = $result->next_offset;
-        }
-        else {
-            $this->remoteDataOffset = 0;
         }
         return $answer;
     }
