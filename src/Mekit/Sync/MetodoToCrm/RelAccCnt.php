@@ -107,9 +107,9 @@ class RelAccCnt extends Sync implements SyncInterface {
             $this->counters["remote"]["index"]++;
             $relationshipResult = $this->saveRemoteRelationship($cacheItem);
             $this->storeCrmIdForCachedItem($cacheItem, $relationshipResult);
-            if ($this->counters["remote"]["index"] >= 50) {
-                break;
-            }
+//            if ($this->counters["remote"]["index"] >= 50) {
+//                break;
+//            }
         }
     }
 
@@ -129,20 +129,15 @@ class RelAccCnt extends Sync implements SyncInterface {
                 $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
             }
             else {
-                if ($relationshipResult['is_new']) {
-                    $cacheUpdateItem->crm_account_id = $relationshipResult['account_id'];
-                    $cacheUpdateItem->crm_contact_id = $relationshipResult['contact_id'];
-                    $now = new \DateTime();
-                    $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
-                }
-                else {
-                    $cacheUpdateItem = FALSE;
-                }
+                $cacheUpdateItem->crm_account_id = $relationshipResult['account_id'];
+                $cacheUpdateItem->crm_contact_id = $relationshipResult['contact_id'];
+                $now = new \DateTime();
+                $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
             }
-            if ($cacheUpdateItem) {
-                $this->log("UPDATING cache item: " . json_encode($cacheUpdateItem));
-                $this->cacheDb->updateItem($cacheUpdateItem);
-            }
+
+            $this->log("UPDATING cache item: " . json_encode($cacheUpdateItem));
+            $this->cacheDb->updateItem($cacheUpdateItem);
+
         }
     }
 
@@ -168,7 +163,7 @@ class RelAccCnt extends Sync implements SyncInterface {
             );
 
 
-            $this->log(json_encode($cacheItem));
+            //$this->log(json_encode($cacheItem));
 
             try {
                 $relationship = $this->loadRemoteRelationship($cacheItem);
@@ -177,9 +172,9 @@ class RelAccCnt extends Sync implements SyncInterface {
                 return $result;
             }
 
+
             if ($relationship['has_relationship'] === TRUE) {
                 $result = $relationship;
-                $result['is_new'] = FALSE;
                 $this->log("Relationship already exists - SKIPPING");
             }
 
@@ -196,8 +191,9 @@ class RelAccCnt extends Sync implements SyncInterface {
                 if ($relResult && isset($relResult->created) && $relResult->created == 1) {
                     $result = $relationship;
                     $result['has_relationship'] = TRUE;
-                    $result['is_new'] = TRUE;
-                    //$this->log("NEW RELATIONSHIP: " . json_encode($relResult));
+                }
+                else {
+                    $this->log("FAILED RELATIONSHIP: " . json_encode($relResult));
                 }
             }
         }
