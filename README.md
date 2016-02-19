@@ -1,6 +1,10 @@
 Metodo SugarCRM Sync
 =====================
 
+USAGE - CRON
+-----------------------------
+./console sync:cron cron.yml
+
 
 USAGE(METODO->CRM) - ACCOUNTS
 -----------------------------
@@ -28,8 +32,6 @@ USAGE(CRM->METODO) - ACCOUNTS
 USAGE(CRM->METODO) - CONTACTS
 -----------------------------
 ./console sync-up:contacts contacts_up.yml
-
-
 
 
 

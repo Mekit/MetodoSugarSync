@@ -48,7 +48,7 @@ class Command extends ConsoleCommand {
         $this->cmdInput = $input;
         $this->cmdOutput = $output;
         $this->setConfigurationFile();
-        $this->setupMailer();
+        //$this->setupMailer();
         $this->setupLogger();
     }
 
