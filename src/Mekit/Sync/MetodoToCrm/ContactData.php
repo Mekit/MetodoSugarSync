@@ -249,6 +249,9 @@ class ContactData extends Sync implements SyncInterface {
                 $crm_id = $remoteItem->id;
             }
         }
+        else {
+            throw new \Exception("No server response for Crm ID query!");
+        }
         return ($crm_id);
     }
 
