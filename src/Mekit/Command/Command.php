@@ -90,7 +90,7 @@ class Command extends ConsoleCommand {
             $logToFileHandler = new StreamHandler($logFilePath, Logger::INFO);
             $this->logger->pushHandler($logToFileHandler);
             //
-            //@todo: re-enable me!
+            //IF YOU WANT MAILING - ENABLE THIS
             //LOG HANDLER: MAIL
             /** @var \Swift_Message $message */
             /*

@@ -175,8 +175,6 @@ class SugarCrmRest {
         //decode the response from JSON
         $response = json_decode($result);
 
-        //@todo: check for errors
-
         return $response;
     }
 

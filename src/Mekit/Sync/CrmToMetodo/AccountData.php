@@ -276,6 +276,9 @@ class AccountData extends Sync implements SyncInterface {
     }
 
     /**
+     *
+     * @todo: manca 'DIVISA'
+     *
      * @param \stdClass $remoteItem
      * @param array     $operation
      * @return string

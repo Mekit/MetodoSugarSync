@@ -297,6 +297,19 @@ class AccountData extends Sync implements SyncInterface {
     }
 
 
+
+    /*
+     * TODO:
+     *
+     * risolvere forintori duplicati
+     *
+     * collegare fornitore al C dove il C == CF(cliente di fatturazione === Quello principale
+     *
+     *
+     *
+     *
+     * */
+
     /**
      * @param \stdClass $localItem
      * @throws \Exception

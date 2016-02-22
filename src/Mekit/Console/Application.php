@@ -39,14 +39,10 @@ class Application extends BaseApplication {
      * @api
      */
     public function run(InputInterface $input = NULL, OutputInterface $output = NULL) {
-
         //@todo: 1) we need to check lock file - if exists refuse because another instance is running
         //@todo: 2) we need to write lock file
-
         $res = parent::run($input, $output);
-
         //@todo: 2) we need to delete lock file
-
         return $res;
     }
 
