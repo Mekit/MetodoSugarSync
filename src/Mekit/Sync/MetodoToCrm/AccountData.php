@@ -299,7 +299,7 @@ class AccountData extends Sync implements SyncInterface {
 
 
     /*
-     * TODO:
+     * @TODO:
      *
      * risolvere forintori duplicati
      *
@@ -327,6 +327,13 @@ class AccountData extends Sync implements SyncInterface {
         $remoteFieldNameForCodiceMetodo = $this->getRemoteFieldNameForCodiceMetodo($localItem->database, $localItem->Tipologia);
         /** @var string $remoteFieldNameForClienteDiFatturazione */
         $remoteFieldNameForClienteDiFatturazione = $this->getRemoteFieldNameForClienteDiFatturazione($localItem->database, $localItem->Tipologia);
+
+        //if there are more than one candidates we need to choose the one where CM === CdF
+        $inversedType = ($localItem->Tipologia == "C" ? "F" : "C");
+        $inversedFieldNameForCM = $this->getRemoteFieldNameForCodiceMetodo($localItem->database, $inversedType);
+        $inversedFieldNameForCdF = $this->getRemoteFieldNameForClienteDiFatturazione($localItem->database, $inversedType);
+
+
         /** @var array $warnings */
         $warnings = [];
 
@@ -337,6 +344,7 @@ class AccountData extends Sync implements SyncInterface {
             ];
             $candidates = $this->cacheDb->loadItems($filter);
             if ($candidates) {
+                //find by already registered Code
                 foreach ($candidates as $candidate) {
                     if ($localItem->CodiceMetodo == $candidate->$remoteFieldNameForCodiceMetodo) {
                         $cachedItem = $candidate;
@@ -349,9 +357,8 @@ class AccountData extends Sync implements SyncInterface {
                 if (!$operation) {
                     if ($localItem->CodiceMetodo == $localItem->ClienteDiFatturazione) {
                         foreach ($candidates as $candidate) {
-                            if ($candidate->$remoteFieldNameForCodiceMetodo
-                                == $candidate->$remoteFieldNameForClienteDiFatturazione
-                            ) {
+                            //if ($candidate->$remoteFieldNameForCodiceMetodo == $candidate->$remoteFieldNameForClienteDiFatturazione) {
+                            if ($candidate->$inversedFieldNameForCM == $candidate->$inversedFieldNameForCdF) {
                                 $cachedItem = $candidate;
                                 $operation = "update";
                                 $identifiedBy = "PIVA + (CM===CF)";
@@ -391,9 +398,7 @@ class AccountData extends Sync implements SyncInterface {
                 if (!$operation) {
                     if ($localItem->CodiceMetodo == $localItem->ClienteDiFatturazione) {
                         foreach ($candidates as $candidate) {
-                            if ($candidate->$remoteFieldNameForCodiceMetodo
-                                == $candidate->$remoteFieldNameForClienteDiFatturazione
-                            ) {
+                            if ($candidate->$inversedFieldNameForCM == $candidate->$inversedFieldNameForCdF) {
                                 $cachedItem = $candidate;
                                 $operation = "update";
                                 $identifiedBy = "CODFISC + (CM===CF)";
@@ -698,8 +703,8 @@ class AccountData extends Sync implements SyncInterface {
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                 LEFT JOIN [$database].dbo.EXTRACLIENTI AS EXTC ON ACF.CODCONTO = EXTC.CODCONTO
                 LEFT JOIN [$database].dbo.EXTRAFORNITORI AS EXTF ON ACF.CODCONTO = EXTF.CODCONTO
-                ORDER BY ACF.DATAMODIFICA ASC;
-                ";
+                ORDER BY ACF.CODCONTO ASC
+                ";//ACF.DATAMODIFICA
 
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
