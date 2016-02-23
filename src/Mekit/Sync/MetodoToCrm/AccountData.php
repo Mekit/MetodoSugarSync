@@ -299,20 +299,6 @@ class AccountData extends Sync implements SyncInterface {
         return ($crm_id);
     }
 
-
-
-    /*
-     * @TODO:
-     *
-     * risolvere forintori duplicati
-     *
-     * collegare fornitore al C dove il C == CF(cliente di fatturazione === Quello principale
-     *
-     *
-     *
-     *
-     * */
-
     /**
      * @param \stdClass $localItem
      * @throws \Exception
