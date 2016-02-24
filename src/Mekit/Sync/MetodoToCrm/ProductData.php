@@ -91,7 +91,7 @@ class ProductData extends Sync implements SyncInterface {
 
     protected function updateRemoteFromCache() {
         $FORCE_LIMIT = FALSE;
-        $this->log("updating remote(offers)...");
+        $this->log("updating remote(product categories)...");
         $this->productCache->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
         $categoryTree = [];
@@ -103,17 +103,105 @@ class ProductData extends Sync implements SyncInterface {
             $this->counters["remote"]["index"]++;
             $categoryTree = $this->buildCategoryTree($categoryTree, $cacheItem);
         }
-        $this->registerRemoteProductCategories($categoryTree);
+        $categoryTree = $this->registerRemoteProductCategories($categoryTree);
 
 
-        //$remoteItem = $this->saveOfferOnRemote($cacheItem);
-        //$this->storeCrmIdForCachedOffer($cacheItem, $remoteItem);
+        $FORCE_LIMIT = FALSE;
+        $this->log("updating remote(products)...");
+        $this->productCache->resetItemWalker();
+        $this->counters["remote"]["index"] = 0;
+        while ($cacheItem = $this->productCache->getNextItem()) {
+            if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counters["remote"]["index"] >= $FORCE_LIMIT) {
+                $this->productCache->resetItemWalker();
+                break;
+            }
+            $this->counters["remote"]["index"]++;
+            $remoteItem = $this->saveProductOnRemote($cacheItem, $categoryTree);
+            $this->storeCrmIdForCachedProduct($cacheItem, $remoteItem);
+        }
     }
 
 
-    protected function registerRemoteProductCategories($categoryTree) {
-        $this->log(json_encode($categoryTree));
+    protected function saveProductOnRemote($cacheItem, $categoryTree) {
+        $result = FALSE;
+        $ISO = 'Y-m-d\TH:i:sO';
+        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
+        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
+        if ($metodoLastUpdate > $crmLastUpdate) {
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["remote"]["index"]
+            );
+
+            try {
+                $crm_id = $this->loadRemoteProductId($cacheItem->id);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
+                return $result;
+            }
+
+            $syncItem = clone($cacheItem);
+            unset($syncItem->crm_id);
+            unset($syncItem->id);
+
+            //add id to sync item for update
+            $restOperation = "INSERT";
+            if ($crm_id) {
+                $syncItem->id = $crm_id;
+                $restOperation = "UPDATE";
+            }
+
+            $syncItem->part_number = $cacheItem->id;
+            $syncItem->crm_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+            $syncItem->name = $syncItem->description;
+            unset($syncItem->description);
+
+            $syncItem->cost = $this->fixCurrency($syncItem->cost);
+            $syncItem->price = $this->fixCurrency($syncItem->price);
+            $syncItem->price_lst_9997_c = $this->fixCurrency($syncItem->price_lst_9997_c);
+            $syncItem->price_lst_10000_c = $this->fixCurrency($syncItem->price_lst_10000_c);
+            $syncItem->sold_last_120_days_c = $this->fixCurrency($syncItem->sold_last_120_days_c);
+
+            //create arguments for rest
+            $arguments = [
+                'module_name' => 'AOS_Products',
+                'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
+            ];
+
+            $this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
+
+            try {
+                $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
+                $this->log("REMOTE RESULT: " . json_encode($result));
+            } catch(SugarCrmRestException $e) {
+                //go ahead with false silently
+                $this->log("REMOTE ERROR!!! - " . $e->getMessage());
+                //we must remove crm_id from $cacheItem
+                //create fake result
+                $result = new \stdClass();
+                $result->updateFailure = TRUE;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * @param string $numberString
+     * @return string
+     */
+    protected function fixCurrency($numberString) {
+        $numberString = ($numberString ? $numberString : '0');
+        $numberString = str_replace('.', ',', $numberString);
+        return $numberString;
+    }
+
+
+    /**
+     * @param array $categoryTree
+     * @return array
+     */
+    protected function registerRemoteProductCategories($categoryTree) {
         //PARENT CATEGORIES
         foreach ($categoryTree as $mainCatId => &$mainCat) {
             try {
@@ -129,7 +217,11 @@ class ProductData extends Sync implements SyncInterface {
                     ];
                     try {
                         $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-                        $this->log("REMOTE RESULT: " . json_encode($result));
+                        if (isset($result->ids) && is_array($result->ids) && count($result->ids)
+                            && !empty($result->ids[0])
+                        ) {
+                            $mainCat->crm_id = $result->ids[0];
+                        }
                     } catch(SugarCrmRestException $e) {
                         //go ahead with false silently
                         $this->log("REMOTE ERROR!!! - " . $e->getMessage());
@@ -139,9 +231,14 @@ class ProductData extends Sync implements SyncInterface {
                     //already registered
                     $mainCat->crm_id = $crm_id;
                 }
+                if (isset($mainCat->name) && isset($mainCat->crm_id)) {
+                    $this->log("PRODUCT MAIN CATEGORY('" . $mainCat->name . "') ID: " . $mainCat->crm_id);
+                }
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED FOR: " . $mainCat->name);
             }
+
+
         }
 
         //CHILD CATEGORIES
@@ -150,12 +247,12 @@ class ProductData extends Sync implements SyncInterface {
                 $mainCatCrmId = $mainCat->crm_id;
                 foreach ($mainCat->children as $childCatId => &$childCat) {
                     try {
+                        $childCategoryCreated = FALSE;
                         $crm_id = $this->loadRemoteProductCategoryId($childCatId);
                         if ($crm_id === FALSE) {
                             $data = new \stdClass();
                             $data->name = $childCat->name;
                             $data->metodo_category_code_c = $childCatId;
-                            $data->parent_categoty_id = $mainCatCrmId;
                             $data->is_parent = 0;
                             $arguments = [
                                 'module_name' => 'AOS_Product_Categories',
@@ -163,7 +260,12 @@ class ProductData extends Sync implements SyncInterface {
                             ];
                             try {
                                 $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-                                $this->log("REMOTE RESULT: " . json_encode($result));
+                                if (isset($result->ids) && is_array($result->ids) && count($result->ids)
+                                    && !empty($result->ids[0])
+                                ) {
+                                    $childCat->crm_id = $result->ids[0];
+                                    $childCategoryCreated = TRUE;
+                                }
                             } catch(SugarCrmRestException $e) {
                                 //go ahead with false silently
                                 $this->log("REMOTE ERROR!!! - " . $e->getMessage());
@@ -173,21 +275,101 @@ class ProductData extends Sync implements SyncInterface {
                             //already registered
                             $childCat->crm_id = $crm_id;
                         }
+                        if (isset($childCat->name) && isset($childCat->crm_id)) {
+                            $this->log(
+                                "PRODUCT CHILD CATEGORY('" . $childCat->name . "') ID: " . $childCat->crm_id
+                                . " MAIN CATEGORY ID: " . $mainCatCrmId
+                            );
+                        }
+
+
+                        //NOW CREATE RELATIONSHIPS ONLY FOR NEWLY CREATED CHILDREN
+                        if ($childCategoryCreated) {
+                            $arguments = [
+                                'module_name' => 'AOS_Product_Categories',
+                                'module_id' => $childCat->crm_id,
+                                'link_field_name' => 'parent_category', //''sub_categories',//parent_category_id
+                                'related_id' => $mainCatCrmId
+                            ];
+                            try {
+                                $result = $this->sugarCrmRest->comunicate('set_relationship', $arguments);
+                                $this->log("RELATIONSHIP RESULT: " . json_encode($result));
+                                if (!isset($result->created) || $result->created != 1) {
+                                    $this->log("RELATIONSHIP ERROR!!! - " . json_encode($arguments));
+                                }
+                            } catch(SugarCrmRestException $e) {
+                                //go ahead with false silently
+                                $this->log("REMOTE ERROR!!! - " . $e->getMessage() . " - " . json_encode($arguments));
+                            }
+                        }
+
                     } catch(\Exception $e) {
                         $this->log("CANNOT LOAD CATEGORY ID FROM CRM - UPDATE WILL BE SKIPPED FOR: " . $childCat->name);
                     }
                 }
             }
         }
+        return $categoryTree;
+    }
 
-        print_r($categoryTree);
+    /**
+     * AOS_Products
+     * @param string $productId
+     * @return string
+     * @throws \Exception
+     */
+    protected function loadRemoteProductId($productId) {
+        $arguments = [
+            'module_name' => 'AOS_Products',
+            'query' => "part_number = '" . $productId . "'",
+            'order_by' => "",
+            'offset' => 0,
+            'select_fields' => ['id'],
+            'link_name_to_fields_array' => [],
+            'max_results' => 2,
+            'deleted' => FALSE,
+            'Favorites' => FALSE,
+        ];
 
+
+        /** @var \stdClass $result */
+        $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
+        if (isset($result) && isset($result->entry_list)) {
+            if (count($result->entry_list) > 1) {
+                //This should never happen!!!
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(
+                    "There is a multiple correspondence for requested codes!"
+                    . json_encode($arguments), Logger::ERROR, $result->entry_list
+                );
+                $this->log("RESULTS: " . json_encode($result->entry_list));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                $this->log(str_repeat("-", 120));
+                throw new \Exception(
+                    "There is a multiple correspondence for requested codes!" . json_encode($arguments)
+                );
+            }
+            else if (count($result->entry_list) == 1) {
+                /** @var \stdClass $remoteItem */
+                $remoteItem = $result->entry_list[0];
+                $crm_id = $remoteItem->id;
+            }
+            else {
+                $crm_id = FALSE;
+            }
+        }
+        else {
+            throw new \Exception("No server response for Crm ID query!" . json_encode($result));
+        }
+        return ($crm_id);
     }
 
 
     /**
      * AOS_Product_Categories
-     * They would be recreated all over again
      * @param string $categoryId
      * @return string
      * @throws \Exception
@@ -263,7 +445,7 @@ class ProductData extends Sync implements SyncInterface {
      * @param \stdClass $cacheItem
      * @param \stdClass $remoteItem
      */
-    protected function storeCrmIdForCachedOffer($cacheItem, $remoteItem) {
+    protected function storeCrmIdForCachedProduct($cacheItem, $remoteItem) {
         if ($remoteItem) {
             $cacheUpdateItem = new \stdClass();
             $cacheUpdateItem->id = $cacheItem->id;
@@ -274,7 +456,9 @@ class ProductData extends Sync implements SyncInterface {
                 $cacheUpdateItem->crm_last_update_time_c = $oldDate->format("c");
             }
             else {
-                $cacheUpdateItem->crm_id = $remoteItem->id;
+                $remoteItemIdList = $remoteItem->ids;
+                $remoteItemId = $remoteItemIdList[0];
+                $cacheUpdateItem->crm_id = $remoteItemId;
                 $now = new \DateTime();
                 $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
             }
