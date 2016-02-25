@@ -691,6 +691,7 @@ class ProductData extends Sync implements SyncInterface {
                 P.VendutoUltimi120gg AS sold_last_120_days_c,
                 P.DATAMODIFICA AS metodo_last_update_time_c
                 FROM [${database}].[dbo].[Sog_VistaArticoliMagazzinoUltimi120gg] AS P
+                WHERE P.CodiceCategoria IS NOT NULL AND P.CodiceCategoria <> '0'
                 ORDER BY P.CodiceArticolo;
             ";
             $this->localItemStatement = $db->prepare($sql);
