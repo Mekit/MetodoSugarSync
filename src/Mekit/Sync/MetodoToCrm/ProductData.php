@@ -29,6 +29,9 @@ class ProductData extends Sync implements SyncInterface {
     protected $localItemStatement;
 
     /** @var array */
+    protected $categoryTree = [];
+
+    /** @var array */
     protected $counters = [];
 
     /**
@@ -65,8 +68,12 @@ class ProductData extends Sync implements SyncInterface {
             $this->updateLocalCache();
         }
 
-        if (isset($options["update-remote"]) && $options["update-remote"]) {
-            $this->updateRemoteFromCache();
+        if (isset($options["update-remote-categories"]) && $options["update-remote-categories"]) {
+            $this->updateRemoteCategoriesFromCache();
+        }
+
+        if (isset($options["update-remote-products"]) && $options["update-remote-products"]) {
+            $this->updateRemoteProductsFromCache();
         }
     }
 
@@ -78,33 +85,32 @@ class ProductData extends Sync implements SyncInterface {
         $this->log("updating local cache(offers)...");
         $this->counters["cache"]["index"] = 0;
         foreach (["IMP"] as $database) {
-            while ($localItem = $this->getNextOffer($database)) {
+            while ($localItem = $this->getNextProduct($database)) {
                 if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counters["cache"]["index"] >= $FORCE_LIMIT) {
                     break;
                 }
                 $this->counters["cache"]["index"]++;
-                $this->saveOfferInCache($localItem);
+                $this->saveProductInCache($localItem);
             }
         }
     }
 
 
-    protected function updateRemoteFromCache() {
-        $FORCE_LIMIT = FALSE;
+    protected function updateRemoteCategoriesFromCache() {
         $this->log("updating remote(product categories)...");
         $this->productCache->resetItemWalker();
-        $this->counters["remote"]["index"] = 0;
-        $categoryTree = [];
         while ($cacheItem = $this->productCache->getNextItem()) {
-            if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counters["remote"]["index"] >= $FORCE_LIMIT) {
-                $this->productCache->resetItemWalker();
-                break;
-            }
-            $this->counters["remote"]["index"]++;
-            $categoryTree = $this->buildCategoryTree($categoryTree, $cacheItem);
+            $this->buildCategoryTree($cacheItem);
         }
-        $categoryTree = $this->registerRemoteProductCategories($categoryTree);
+        $this->registerRemoteProductCategories();
+    }
 
+    protected function updateRemoteProductsFromCache() {
+        $this->log("updating remote(products)...");
+        $this->productCache->resetItemWalker();
+        while ($cacheItem = $this->productCache->getNextItem()) {
+            $this->buildCategoryTree($cacheItem);
+        }
 
         $FORCE_LIMIT = FALSE;
         $this->log("updating remote(products)...");
@@ -116,13 +122,59 @@ class ProductData extends Sync implements SyncInterface {
                 break;
             }
             $this->counters["remote"]["index"]++;
-            $remoteItem = $this->saveProductOnRemote($cacheItem, $categoryTree);
-            $this->storeCrmIdForCachedProduct($cacheItem, $remoteItem);
+            $remoteProductItem = $this->saveProductOnRemote($cacheItem);
+            $remoteRelationItem = $this->saveRelationshipProductToCategoryOnRemote($remoteProductItem, $cacheItem);
+            if ($remoteProductItem && $remoteRelationItem) {
+                $this->storeCrmIdForCachedProduct($cacheItem, $remoteProductItem);
+            }
         }
     }
 
+    /**
+     * @param \stdClass $remoteProductItem
+     * @param \stdClass $cacheItem
+     * @return bool|\stdClass
+     */
+    protected function saveRelationshipProductToCategoryOnRemote($remoteProductItem, $cacheItem) {
+        $result = FALSE;
+        if (!$remoteProductItem || !isset($remoteProductItem->ids) || !count($remoteProductItem->ids)) {
+            return FALSE;
+        }
 
-    protected function saveProductOnRemote($cacheItem, $categoryTree) {
+        $remoteProductId = $remoteProductItem->ids[0];
+        $remoteProductCategoryId = $this->getCrmIdForCategory($cacheItem->cat_sub_id);
+        if (!$remoteProductId || !$remoteProductCategoryId) {
+            return FALSE;
+        }
+        //$this->log("Remote product(".$cacheItem->id.") id: " . $remoteProductId);
+        //$this->log("Remote category(".$cacheItem->cat_sub_name.") id: " . $remoteProductCategoryId);
+
+
+        //product_categories
+        $arguments = [
+            'module_name' => 'AOS_Product_Categories',
+            'module_id' => $remoteProductCategoryId,
+            'link_field_name' => 'aos_products',
+            'related_ids' => [$remoteProductId]
+        ];
+        try {
+            $result = $this->sugarCrmRest->comunicate('set_relationship', $arguments);
+            $this->log("RELATIONSHIP RESULT: " . json_encode($result));
+            if (!isset($result->created) || $result->created != 1) {
+                $this->log("RELATIONSHIP ERROR!!! - " . json_encode($arguments));
+            }
+        } catch(SugarCrmRestException $e) {
+            //go ahead with false silently
+            $this->log("REMOTE ERROR!!! - " . $e->getMessage() . " - " . json_encode($arguments));
+        }
+        return $result;
+    }
+
+    /**
+     * @param \stdClass $cacheItem
+     * @return bool|\stdClass
+     */
+    protected function saveProductOnRemote($cacheItem) {
         $result = FALSE;
         $ISO = 'Y-m-d\TH:i:sO';
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
@@ -186,24 +238,15 @@ class ProductData extends Sync implements SyncInterface {
         return $result;
     }
 
-    /**
-     * @param string $numberString
-     * @return string
-     */
-    protected function fixCurrency($numberString) {
-        $numberString = ($numberString ? $numberString : '0');
-        $numberString = str_replace('.', ',', $numberString);
-        return $numberString;
-    }
+
 
 
     /**
-     * @param array $categoryTree
-     * @return array
+     *
      */
-    protected function registerRemoteProductCategories($categoryTree) {
+    protected function registerRemoteProductCategories() {
         //PARENT CATEGORIES
-        foreach ($categoryTree as $mainCatId => &$mainCat) {
+        foreach ($this->categoryTree as $mainCatId => &$mainCat) {
             try {
                 $crm_id = $this->loadRemoteProductCategoryId($mainCatId);
                 if ($crm_id === FALSE) {
@@ -237,12 +280,10 @@ class ProductData extends Sync implements SyncInterface {
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED FOR: " . $mainCat->name);
             }
-
-
         }
 
         //CHILD CATEGORIES
-        foreach ($categoryTree as $mainCatId => &$mainCat) {
+        foreach ($this->categoryTree as $mainCatId => &$mainCat) {
             if (isset($mainCat->crm_id)) {
                 $mainCatCrmId = $mainCat->crm_id;
                 foreach ($mainCat->children as $childCatId => &$childCat) {
@@ -309,7 +350,6 @@ class ProductData extends Sync implements SyncInterface {
                 }
             }
         }
-        return $categoryTree;
     }
 
     /**
@@ -408,22 +448,79 @@ class ProductData extends Sync implements SyncInterface {
 
 
     /**
-     * @param array     $categoryTree
-     * @param \stdClass $cacheItem
-     * @return array
+     * @param string $categoryId
+     * @return bool|string
      */
-    protected function buildCategoryTree($categoryTree, $cacheItem) {
+    protected function getCrmIdForCategory($categoryId) {
+        $answer = FALSE;
+        $breakout = FALSE;
+        foreach ($this->categoryTree as $mainCatId => &$mainCat) {
+            if ($mainCatId == $categoryId) {
+                if (isset($mainCat->crm_id) && !empty($mainCat->crm_id)) {
+                    $answer = $mainCat->crm_id;
+                    $breakout = TRUE;
+                }
+                else {
+                    try {
+                        $crm_id = $this->loadRemoteProductCategoryId($mainCatId);
+                        if ($crm_id != FALSE) {
+                            $answer = $crm_id;
+                            $mainCat->crm_id = $crm_id;
+                        }
+                        $breakout = TRUE;
+                    } catch(SugarCrmRestException $e) {
+                        $breakout = TRUE;
+                    }
+                }
+            }
+            else {
+                foreach ($mainCat->children as $childCatId => &$childCat) {
+                    if ($childCatId == $categoryId) {
+                        if (isset($childCat->crm_id) && !empty($childCat->crm_id)) {
+                            $answer = $childCat->crm_id;
+                            $breakout = TRUE;
+                        }
+                        else {
+                            try {
+                                $crm_id = $this->loadRemoteProductCategoryId($childCatId);
+                                if ($crm_id != FALSE) {
+                                    $answer = $crm_id;
+                                    $childCat->crm_id = $crm_id;
+                                }
+                                $breakout = TRUE;
+                            } catch(SugarCrmRestException $e) {
+                                $breakout = TRUE;
+                            }
+                        }
+                    }
+                    if ($breakout) {
+                        break;
+                    }
+                }
+            }
+            if ($breakout) {
+                break;
+            }
+        }
+        return $answer;
+    }
+
+
+    /**
+     * @param \stdClass $cacheItem
+     */
+    protected function buildCategoryTree($cacheItem) {
         if ($cacheItem->cat_main_id) {
-            if (!array_key_exists($cacheItem->cat_main_id, $categoryTree)) {
-                $categoryTree[$cacheItem->cat_main_id] = new \stdClass();
-                $categoryTree[$cacheItem->cat_main_id]->name = $cacheItem->cat_main_name;
-                $categoryTree[$cacheItem->cat_main_id]->children = [];
+            if (!array_key_exists($cacheItem->cat_main_id, $this->categoryTree)) {
+                $this->categoryTree[$cacheItem->cat_main_id] = new \stdClass();
+                $this->categoryTree[$cacheItem->cat_main_id]->name = $cacheItem->cat_main_name;
+                $this->categoryTree[$cacheItem->cat_main_id]->children = [];
             }
         }
 
         if ($cacheItem->cat_main_id && $cacheItem->cat_sub_id) {
             $found = FALSE;
-            foreach ($categoryTree as $mainCatId => $mainCat) {
+            foreach ($this->categoryTree as $mainCatId => $mainCat) {
                 if (array_key_exists($cacheItem->cat_sub_id, $mainCat->children)) {
                     $found = TRUE;
                     if ($mainCatId != $cacheItem->cat_main_id) {
@@ -433,11 +530,10 @@ class ProductData extends Sync implements SyncInterface {
                 }
             }
             if (!$found) {
-                $categoryTree[$cacheItem->cat_main_id]->children[$cacheItem->cat_sub_id] = new \stdClass();
-                $categoryTree[$cacheItem->cat_main_id]->children[$cacheItem->cat_sub_id]->name = $cacheItem->cat_sub_name;
+                $this->categoryTree[$cacheItem->cat_main_id]->children[$cacheItem->cat_sub_id] = new \stdClass();
+                $this->categoryTree[$cacheItem->cat_main_id]->children[$cacheItem->cat_sub_id]->name = $cacheItem->cat_sub_name;
             }
         }
-        return $categoryTree;
     }
 
 
@@ -473,7 +569,7 @@ class ProductData extends Sync implements SyncInterface {
      * @param \stdClass $localItem
      * @throws \Exception
      */
-    protected function saveOfferInCache($localItem) {
+    protected function saveProductInCache($localItem) {
         /** @var array|bool $operation */
         $operation = FALSE;
 
@@ -488,12 +584,6 @@ class ProductData extends Sync implements SyncInterface {
 
         /** @var string $itemDb IMP|MEKIT */
         $itemDb = $localItem->database_metodo;
-
-
-        $this->log(
-            "-----------------------------------------------------------------------------------------"
-            . $this->counters["cache"]["index"]
-        );
 
         //get by id_head
         $filter = [
@@ -528,6 +618,10 @@ class ProductData extends Sync implements SyncInterface {
 
         //LOG
         if ($operation != "skip") {
+            $this->log(
+                "-----------------------------------------------------------------------------------------"
+                . $this->counters["cache"]["index"]
+            );
             $this->log("[" . $itemDb . "][" . json_encode($operation) . "]:");
             //$this->log("LOCAL: " . json_encode($localItem));
             //$this->log("CACHED: " . json_encode($cachedItem));
@@ -578,7 +672,7 @@ class ProductData extends Sync implements SyncInterface {
      * @param string $database IMP|MEKIT
      * @return bool|\stdClass
      */
-    protected function getNextOffer($database) {
+    protected function getNextProduct($database) {
         if (!$this->localItemStatement) {
             $db = Configuration::getDatabaseConnection("SERVER2K8");
             $sql = "SELECT
@@ -610,5 +704,16 @@ class ProductData extends Sync implements SyncInterface {
             $this->localItemStatement = NULL;
         }
         return $item;
+    }
+
+
+    /**
+     * @param string $numberString
+     * @return string
+     */
+    protected function fixCurrency($numberString) {
+        $numberString = ($numberString ? $numberString : '0');
+        $numberString = str_replace('.', ',', $numberString);
+        return $numberString;
     }
 }

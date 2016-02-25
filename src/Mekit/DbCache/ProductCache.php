@@ -53,11 +53,11 @@ class ProductCache extends CacheDb {
             $query = "UPDATE " . $tableName . " SET";
 
             if ($local) {
-                $query .= " metodo_last_update_time = '" . $oldDate->format("c") . "'";
+                $query .= " metodo_last_update_time_c = '" . $oldDate->format("c") . "'";
             }
             $query .= ($local && $remote) ? ',' : '';
             if ($remote) {
-                $query .= " crm_last_update_time = '" . $oldDate->format("c") . "'";
+                $query .= " crm_last_update_time_c = '" . $oldDate->format("c") . "'";
                 $query .= ", crm_id = NULL";
             }
             $query .= ";";

@@ -51,11 +51,15 @@ class SyncDownProductsCommand extends Command implements CommandInterface {
                 ),
                 new InputOption(
                     'update-cache', NULL, InputOption::VALUE_NONE,
-                    'Update local cache?'
+                    'Update local cache.'
                 ),
                 new InputOption(
-                    'update-remote', NULL, InputOption::VALUE_NONE,
-                    'Update remote?'
+                    'update-remote-categories', NULL, InputOption::VALUE_NONE,
+                    'Update product categories remote.'
+                ),
+                new InputOption(
+                    'update-remote-products', NULL, InputOption::VALUE_NONE,
+                    'Update products on remote'
                 ),
             ]
         );
