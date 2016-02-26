@@ -19,6 +19,7 @@ class OfferCache extends CacheDb {
         'cod_c_f' => ['type' => 'TEXT', 'index' => FALSE],
         'imp_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
         'mekit_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
+        'rif_opportunity_identifier' => ['type' => 'TEXT', 'index' => FALSE],
         'dsc_payment' => ['type' => 'TEXT', 'index' => FALSE],
         'tot_imponibile_euro' => ['type' => 'TEXT', 'index' => FALSE],
         'tot_imposta_euro' => ['type' => 'TEXT', 'index' => FALSE],
