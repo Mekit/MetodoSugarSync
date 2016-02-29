@@ -36,6 +36,9 @@ class OfferData extends Sync implements SyncInterface {
     protected $localItemStatement2;
 
     /** @var array */
+    protected $userIdCache;
+
+    /** @var array */
     protected $counters = [];
 
     /**
@@ -119,19 +122,20 @@ class OfferData extends Sync implements SyncInterface {
         $this->log("updating remote(offers)...");
         $this->offerCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
-        while ($cacheItem = $this->offerCacheDb->getNextItem('metodo_last_update_time', $orderDir = 'ASC')) {
+        while ($cachedOfferItem = $this->offerCacheDb->getNextItem('metodo_last_update_time', $orderDir = 'ASC')) {
             if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counters["remote"]["index"] >= $FORCE_LIMIT) {
                 $this->offerCacheDb->resetItemWalker();
                 break;
             }
             $this->counters["remote"]["index"]++;
-            $remoteOfferItem = $this->saveOfferOnRemote($cacheItem);
-            //$this->storeCrmIdForCachedOffer($cacheItem, $remoteOfferItem);
+            $remoteOfferItem = $this->saveOfferOnRemote($cachedOfferItem);
+            $this->storeCrmIdForCachedOffer($cachedOfferItem, $remoteOfferItem);
         }
+
 
         /*
         //OFFER LINES
-        $FORCE_LIMIT = FALSE;
+        $FORCE_LIMIT = 1;
         $this->log("updating remote(offer lines)...");
         $this->offerLineCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
@@ -142,8 +146,9 @@ class OfferData extends Sync implements SyncInterface {
             }
             $this->counters["remote"]["index"]++;
             $remoteItem = $this->saveOfferLineOnRemote($cacheItem);
-            $this->storeCrmIdForCachedOfferLine($cacheItem, $remoteItem);
-        }*/
+            //$this->storeCrmIdForCachedOfferLine($cacheItem, $remoteItem);
+        }
+        */
     }
 
 
@@ -215,11 +220,20 @@ class OfferData extends Sync implements SyncInterface {
             );
 
             try {
-                $crm_id = $this->loadRemoteOfferLineId($cacheItem);
+                $crm_group_id = $this->loadRemoteOfferGroupId($cacheItem);
             } catch(\Exception $e) {
-                $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+                $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
                 return $remoteItem;
             }
+
+            try {
+                $crm_line_id = $this->loadRemoteOfferLineId($cacheItem);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD LINE ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+                return $remoteItem;
+            }
+
+            return;
 
             $syncItem = clone($cacheItem);
 
@@ -232,11 +246,11 @@ class OfferData extends Sync implements SyncInterface {
 
             $this->log("CRM SYNC ITEM: " . json_encode($syncItem));
 
-            if ($crm_id) {
+            if ($crm_line_id) {
                 //UPDATE
-                $this->log("updating remote($crm_id)...");
+                $this->log("updating remote($crm_line_id)...");
                 try {
-                    $remoteItem = $this->sugarCrmRest->comunicate('/mkt_Offer_Lines/' . $crm_id, 'PUT', $syncItem);
+                    $remoteItem = $this->sugarCrmRest->comunicate('/mkt_Offer_Lines/' . $crm_line_id, 'PUT', $syncItem);
                 } catch(SugarCrmRestException $e) {
                     //go ahead with false silently
                     $this->log("REMOTE UPDATE ERROR!!! - " . $e->getMessage());
@@ -264,6 +278,7 @@ class OfferData extends Sync implements SyncInterface {
         return $remoteItem;
     }
 
+
     /**
      * @param \stdClass $cacheItem
      * @return \stdClass|bool
@@ -287,6 +302,12 @@ class OfferData extends Sync implements SyncInterface {
                 return $remoteOfferItem;
             }
 
+            $assignedUserId = $this->loadRemoteUserId(
+                ($cacheItem->database_metodo == "IMP" ? "$cacheItem->imp_agent_code" : "mekit_agent_code"),
+                $cacheItem->database_metodo
+            );
+            $assignedUserId = ($assignedUserId ? $assignedUserId : 1);//assign to administrator if no user found
+
             //$syncItem = clone($cacheItem);
             $syncItem = new \stdClass();
 
@@ -298,14 +319,14 @@ class OfferData extends Sync implements SyncInterface {
             }
 
             //modify sync item here
-            $syncItem->number = $cacheItem->document_number;
+            $syncItem->document_number_c = $cacheItem->document_number;
             $syncItem->name = $cacheItem->database_metodo . ' - ' . $cacheItem->document_number;
 
             $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->data_doc);
             $syncItem->data_doc_c = $dataDoc->format("Y-m-d");
             $syncItem->expiration = $dataDoc->format("Y-m-d");
 
-            $syncItem->metodo_database_c = $cacheItem->database_metodo;
+            $syncItem->metodo_database_c = strtolower($cacheItem->database_metodo);
 
             $syncItem->stage = 'Draft';
             $syncItem->approval_status = 'Approved';
@@ -315,6 +336,8 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem->mekit_agent_code_c = $this->fixMetodoCode($cacheItem->mekit_agent_code, ['A'], TRUE);
 
             $syncItem->dsc_payment_c = $cacheItem->dsc_payment;
+
+            $syncItem->assigned_user_id = $assignedUserId;
 
 
             //TOTALE DOCUMENTO
@@ -363,6 +386,7 @@ class OfferData extends Sync implements SyncInterface {
                 }
             }
 
+            /*
             //RELATE TO OPPORTUNITY
             if ($remoteOfferItem && isset($remoteOfferItem->ids) && count($remoteOfferItem->ids)) {
                 $offerId = $remoteOfferItem->ids[0];
@@ -371,7 +395,8 @@ class OfferData extends Sync implements SyncInterface {
                     $result = new \stdClass();
                     $result->updateFailure = TRUE;
                 }
-            }
+            }*/
+
 
 
         }
@@ -380,7 +405,7 @@ class OfferData extends Sync implements SyncInterface {
 
     /**
      * create/relate to Opportunity (rif_opportunity_identifier)
-     * name = 'IMP - Opprotunity'
+     * name = 'IMP - Opportunity'
      * stato = 'Offerta'
      * data chiusura prevista - data offerta + 15 gg
      * RELATE - AZIENDA
@@ -391,18 +416,25 @@ class OfferData extends Sync implements SyncInterface {
      * @return \stdClass|bool
      * @throws \Exception
      */
+    /*
     protected function relateOfferToOpportunityOnRemote($cacheItem, $remoteOfferId) {
-        $result = FALSE;
-
-        try {
-            $opportunity_id = $this->loadRemoteOpportunityId($remoteOfferId);
-        } catch(SugarCrmRestException $e) {
-            return FALSE;
+        $result = TRUE;//always return true
+        $ISO = 'Y-m-d\TH:i:sO';
+        $dataDocumento = \DateTime::createFromFormat($ISO, $cacheItem->data_doc);
+        $fixedDate = \DateTime::createFromFormat("Y-m-d", "2015-11-01");
+        if ($dataDocumento >= $fixedDate) {
+            $opportunity_id = false;
+            try {
+                $opportunity_id = $this->loadRemoteOpportunityId($remoteOfferId);
+            } catch(SugarCrmRestException $e) {
+                //keep quiet
+            }
+            if(!$opportunity_id) {
+            }
         }
-
-
         return $result;
     }
+    */
 
 
     /**
@@ -441,6 +473,30 @@ class OfferData extends Sync implements SyncInterface {
         return $result;
     }
 
+    /**
+     * They would be recreated all over again
+     * @param \stdClass $cacheItem
+     * @return string|bool
+     * @throws \Exception
+     */
+    protected function loadRemoteOfferGroupId($cacheItem) {
+        $crm_id = FALSE;
+
+        $arguments = [
+            'module_name' => 'AOS_Line_Item_Groups',
+            'query' => "aos_quotes_cstm.document_number_c = '" . $cacheItem->document_number
+                       . "' AND aos_quotes_cstm.metodo_database_c = '"
+                       . $cacheItem->database_metodo . "'",
+            'order_by' => "",
+            'offset' => 0,
+            'select_fields' => ['id'],
+            'link_name_to_fields_array' => [],
+            'max_results' => 2,
+            'deleted' => FALSE,
+            'Favorites' => FALSE,
+        ];
+    }
+
 
     /**
      * They would be recreated all over again
@@ -450,7 +506,20 @@ class OfferData extends Sync implements SyncInterface {
      */
     protected function loadRemoteOfferLineId($cacheItem) {
         $crm_id = FALSE;
-        $filter = [];
+
+        $arguments = [
+            'module_name' => 'AOS_Products_Quotes',//AOS_Products_Quotes
+            'query' => "aos_quotes_cstm.document_number_c = '" . $cacheItem->document_number
+                       . "' AND aos_quotes_cstm.metodo_database_c = '"
+                       . $cacheItem->database_metodo . "'",
+            'order_by' => "",
+            'offset' => 0,
+            'select_fields' => ['id'],
+            'link_name_to_fields_array' => [],
+            'max_results' => 2,
+            'deleted' => FALSE,
+            'Favorites' => FALSE,
+        ];
 
         $filter[] = [
             'database_metodo' => $cacheItem->database_metodo,
@@ -507,7 +576,8 @@ class OfferData extends Sync implements SyncInterface {
     protected function loadRemoteOfferId($cacheItem) {
         $arguments = [
             'module_name' => 'AOS_Quotes',
-            'query' => "number = '" . $cacheItem->document_number . "' AND aos_quotes_cstm.metodo_database_c = '"
+            'query' => "aos_quotes_cstm.document_number_c = '" . $cacheItem->document_number
+                       . "' AND aos_quotes_cstm.metodo_database_c = '"
                        . $cacheItem->database_metodo . "'",
             'order_by' => "",
             'offset' => 0,
@@ -556,6 +626,7 @@ class OfferData extends Sync implements SyncInterface {
 
     /**
      * @param string $remoteOfferId
+     * @return string
      */
     protected function loadRemoteOpportunityId($remoteOfferId) {
         $crm_id = FALSE;
@@ -568,8 +639,60 @@ class OfferData extends Sync implements SyncInterface {
             ],
         ];
         $result = $this->sugarCrmRest->comunicate('get_entries', $arguments);
+        if (isset($result->relationship_list[0])) {
+            $rel = $this->sugarCrmRest->getNameValueListFromEntyListItem(NULL, $result->relationship_list[0]);
+            if (isset($rel->opportunities) && is_array($rel->opportunities) && count($rel->opportunities)) {
+                $relatedOpportunity = $rel->opportunities[0];
+                $this->log("FOUND RELATED OPPORTUNITY: " . json_encode($relatedOpportunity));
+                $crm_id = $relatedOpportunity->id;
+            }
+        }
+        return ($crm_id);
 
-        $this->log("OPPORTUNITY: " . json_encode($result));
+    }
+
+    /**
+     * @param string $agentCode
+     * @param string $database
+     * @return string
+     */
+    protected function loadRemoteUserId($agentCode, $database) {
+        $crm_id = FALSE;
+        $fieldName = ($database == 'IMP' ? 'imp_agent_code_c' : 'mekit_agent_code_c');
+        $agentCode = $this->fixMetodoCode($agentCode, ["A"], TRUE);
+        if (isset($this->userIdCache[$database][$agentCode]) && !empty($this->userIdCache[$database][$agentCode])) {
+            $crm_id = $this->userIdCache[$database][$agentCode];
+        }
+        else {
+            $arguments = [
+                'module_name' => 'Users',
+                'query' => "users_cstm." . $fieldName . " = '" . $agentCode . "'",
+                'order_by' => "",
+                'offset' => 0,
+                'select_fields' => ['id'],
+                'link_name_to_fields_array' => [],
+                'max_results' => 1,
+                'deleted' => FALSE,
+                'Favorites' => FALSE,
+            ];
+            $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
+            if (isset($result) && isset($result->entry_list)) {
+                if (count($result->entry_list) == 1) {
+                    /** @var \stdClass $remoteItem */
+                    $remoteItem = $result->entry_list[0];
+                    $this->log("FOUND REMOTE USER: " . json_encode($remoteItem));
+                    $crm_id = $remoteItem->id;
+                    $this->userIdCache[$database][$agentCode] = $crm_id;
+                }
+                else {
+                    $this->log("NO REMOTE USER: " . json_encode($arguments));
+                }
+            }
+            else {
+                $this->log("NO REMOTE USER: " . json_encode($arguments));
+            }
+        }
+        return ($crm_id);
 
     }
 

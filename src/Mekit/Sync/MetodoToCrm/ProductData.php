@@ -566,6 +566,10 @@ class ProductData extends Sync implements SyncInterface {
 
 
     /**
+     *
+     * @todo: aggiungere: prodotto esaurito
+     *
+     *
      * @param \stdClass $localItem
      * @throws \Exception
      */
