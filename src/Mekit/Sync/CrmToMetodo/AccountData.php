@@ -304,7 +304,8 @@ class AccountData extends Sync implements SyncInterface {
             'INDIRIZZO' => $remoteItem->billing_address_street,
             'CAP' => $remoteItem->billing_address_postalcode,
             'LOCALITA' => $remoteItem->billing_address_city,
-            'PROVINCIA' => $remoteItem->billing_address_state,
+            'PROVINCIA' => substr($remoteItem->billing_address_state, 0, 2),
+            //@todo: temorary solution - we need to fix db!
             'TELEFONO' => $remoteItem->phone_office,
             'FAX' => $remoteItem->phone_fax,
             'TELEX' => $primaryEmailAddress,
@@ -359,6 +360,14 @@ class AccountData extends Sync implements SyncInterface {
      */
     protected function getInsertUpdateSql($operation, $database, $tableName, $tableData, $whereColumns = NULL) {
         $answer = '';
+        //CLEAN UP TABLE FROM EMPTY VALUES
+        foreach ($tableData as $columnName => $columnValue) {
+            $columnValue = $this->cleanupSqlFieldValue($columnValue);
+            if (is_null($columnValue)) {
+                unset($tableData[$columnName]);
+            }
+        }
+        //
         $columnIndex = 1;
         $columnNames = array_keys($tableData);
         $maxColumns = count($columnNames);
@@ -367,8 +376,14 @@ class AccountData extends Sync implements SyncInterface {
             $answer .= " (" . implode(",", $columnNames) . ")";
             $answer .= " VALUES(";
             foreach ($tableData as $columnName => $columnValue) {
-                $columnValueNorm = str_replace("'", "`", $columnValue);
-                $answer .= "'" . $columnValueNorm . "'" . ($columnIndex < $maxColumns ? ", " : "");
+                $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
+                if (is_numeric($columnValueNorm)) {
+                    $answer .= $columnValueNorm;
+                }
+                else {
+                    $answer .= "'" . $columnValueNorm . "'";
+                }
+                $answer .= ($columnIndex < $maxColumns ? ", " : "");
                 $columnIndex++;
             }
             $answer .= ");";
@@ -376,22 +391,47 @@ class AccountData extends Sync implements SyncInterface {
         else if ($operation == 'UPDATE') {
             $answer .= 'UPDATE [' . $database . '].[dbo].[' . $tableName . '] SET ';
             foreach ($tableData as $columnName => $columnValue) {
-                $columnValueNorm = str_replace("'", "`", $columnValue);
-                $answer .= $columnName . " = " . "'" . $columnValueNorm . "'" . ($columnIndex
-                                                                                 < $maxColumns ? ", " : "");
+                $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
+                $answer .= $columnName . " = ";
+                if (is_numeric($columnValueNorm)) {
+                    $answer .= $columnValueNorm;
+                }
+                else {
+                    $answer .= "'" . $columnValueNorm . "'";
+                }
+                $answer .= ($columnIndex < $maxColumns ? ", " : "");
                 $columnIndex++;
             }
             if (($whereMaxColumns = count($whereColumns))) {
                 $whereColumnIndex = 1;
                 $answer .= " WHERE ";
                 foreach ($whereColumns as $columnName => $columnValue) {
-                    $answer .= $columnName . " = " . "'" . $columnValue . "'" . ($whereColumnIndex
-                                                                                 < $whereMaxColumns ? " AND " : "");
+                    $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
+                    $answer .= $columnName . " = ";
+                    if (is_numeric($columnValueNorm)) {
+                        $answer .= $columnValueNorm;
+                    }
+                    else {
+                        $answer .= "'" . $columnValueNorm . "'";
+                    }
+                    $answer .= ($whereColumnIndex < $whereMaxColumns ? " AND " : "");
                     $whereColumnIndex++;
                 }
             }
         }
         return $answer;
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed|null
+     */
+    protected function cleanupSqlFieldValue($value) {
+        $value = str_replace("'", "`", $value);
+        if (empty($value)) {
+            $value = NULL;
+        }
+        return $value;
     }
 
 
