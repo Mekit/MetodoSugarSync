@@ -118,11 +118,11 @@ class OfferData extends Sync implements SyncInterface {
 
     protected function updateRemoteFromCache() {
         //OFFERS
-        $FORCE_LIMIT = 1;
+        $FORCE_LIMIT = FALSE;
         $this->log("updating remote(offers)...");
         $this->offerCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
-        while ($cachedOfferItem = $this->offerCacheDb->getNextItem('metodo_last_update_time', $orderDir = 'ASC')) {
+        while ($cachedOfferItem = $this->offerCacheDb->getNextItem('metodo_last_update_time', $orderDir = 'DESC')) {
             if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counters["remote"]["index"] >= $FORCE_LIMIT) {
                 $this->offerCacheDb->resetItemWalker();
                 break;
@@ -220,20 +220,11 @@ class OfferData extends Sync implements SyncInterface {
             );
 
             try {
-                $crm_group_id = $this->loadRemoteOfferGroupId($cacheItem);
-            } catch(\Exception $e) {
-                $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-                return $remoteItem;
-            }
-
-            try {
                 $crm_line_id = $this->loadRemoteOfferLineId($cacheItem);
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD LINE ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
                 return $remoteItem;
             }
-
-            return;
 
             $syncItem = clone($cacheItem);
 
@@ -319,14 +310,16 @@ class OfferData extends Sync implements SyncInterface {
             }
 
             //modify sync item here
+            $syncItem->metodo_database_c = strtolower($cacheItem->database_metodo);
+            $syncItem->metodo_id_head_c = $cacheItem->id_head;
             $syncItem->document_number_c = $cacheItem->document_number;
             $syncItem->name = $cacheItem->database_metodo . ' - ' . $cacheItem->document_number;
+            $syncItem->assigned_user_id = $assignedUserId;
 
             $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->data_doc);
             $syncItem->data_doc_c = $dataDoc->format("Y-m-d");
             $syncItem->expiration = $dataDoc->format("Y-m-d");
-
-            $syncItem->metodo_database_c = strtolower($cacheItem->database_metodo);
+            $syncItem->document_year_c = $dataDoc->format("Y");
 
             $syncItem->stage = 'Draft';
             $syncItem->approval_status = 'Approved';
@@ -336,8 +329,6 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem->mekit_agent_code_c = $this->fixMetodoCode($cacheItem->mekit_agent_code, ['A'], TRUE);
 
             $syncItem->dsc_payment_c = $cacheItem->dsc_payment;
-
-            $syncItem->assigned_user_id = $assignedUserId;
 
 
             //TOTALE DOCUMENTO
@@ -361,7 +352,6 @@ class OfferData extends Sync implements SyncInterface {
                 'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
             ];
 
-
             $this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
 
             try {
@@ -372,33 +362,37 @@ class OfferData extends Sync implements SyncInterface {
                 $this->log("REMOTE ERROR!!! - " . $e->getMessage());
                 //we must remove crm_id from $cacheItem
                 //create fake result
-                $result = new \stdClass();
-                $result->updateFailure = TRUE;
+                $remoteOfferItem = new \stdClass();
+                $remoteOfferItem->updateFailure = TRUE;
             }
 
-            //RELATE TO ACCOUNT
+
             if ($remoteOfferItem && isset($remoteOfferItem->ids) && count($remoteOfferItem->ids)) {
-                $offerId = $remoteOfferItem->ids[0];
-                $res = $this->relateOfferToAccountOnRemote($cacheItem, $offerId);
+
+                $remoteOfferId = $remoteOfferItem->ids[0];
+                $remoteAccountId = FALSE;
+
+                //RELATE TO ACCOUNT
+                $res = $this->relateOfferToAccountOnRemote($cacheItem, $remoteOfferId);
                 if (!$res) {
-                    $result = new \stdClass();
-                    $result->updateFailure = TRUE;
+                    $this->log("UNABLE TO RELATE OFFER TO ACCOUNT");
+                    $remoteOfferItem = new \stdClass();
+                    $remoteOfferItem->updateFailure = TRUE;
+                }
+                else {
+                    if (isset($res->ids[0]) && !empty($res->ids[0])) {
+                        $remoteAccountId = $res->ids[0];
+                    }
+                }
+
+                //RELATE TO OPPORTUNITY
+                $res = $this->relateOfferToOpportunityOnRemote($cacheItem, $remoteOfferId, $assignedUserId, $remoteAccountId);
+                if (!$res) {
+                    $this->log("UNABLE TO RELATE OFFER TO OPPORTUNITY");
+                    $remoteOfferItem = new \stdClass();
+                    $remoteOfferItem->updateFailure = TRUE;
                 }
             }
-
-            /*
-            //RELATE TO OPPORTUNITY
-            if ($remoteOfferItem && isset($remoteOfferItem->ids) && count($remoteOfferItem->ids)) {
-                $offerId = $remoteOfferItem->ids[0];
-                $res = $this->relateOfferToOpportunityOnRemote($cacheItem, $offerId);
-                if (!$res) {
-                    $result = new \stdClass();
-                    $result->updateFailure = TRUE;
-                }
-            }*/
-
-
-
         }
         return $remoteOfferItem;
     }
@@ -411,30 +405,98 @@ class OfferData extends Sync implements SyncInterface {
      * RELATE - AZIENDA
      * RELATE - CONTATTO ACQ AZIENDA
      *
+     * @todo: create only - NO UPDATE!
+     *
      * @param \stdClass $cacheItem
      * @param string    $remoteOfferId
+     * @param string    $assignedUserId
+     * @param string    $remoteAccountId
      * @return \stdClass|bool
      * @throws \Exception
      */
-    /*
-    protected function relateOfferToOpportunityOnRemote($cacheItem, $remoteOfferId) {
-        $result = TRUE;//always return true
-        $ISO = 'Y-m-d\TH:i:sO';
-        $dataDocumento = \DateTime::createFromFormat($ISO, $cacheItem->data_doc);
-        $fixedDate = \DateTime::createFromFormat("Y-m-d", "2015-11-01");
-        if ($dataDocumento >= $fixedDate) {
+    protected function relateOfferToOpportunityOnRemote($cacheItem, $remoteOfferId, $assignedUserId, $remoteAccountId) {
+        $remoteOpportunityItem = FALSE;//always return true
+        $skip = FALSE;
+        $dataDocumento = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->data_doc);
+        $fixedDate = \DateTime::createFromFormat("Y-m-d", "2015-09-01");
+        if ($dataDocumento->format('U') >= $fixedDate->format('U')) {
             $opportunity_id = false;
             try {
                 $opportunity_id = $this->loadRemoteOpportunityId($remoteOfferId);
             } catch(SugarCrmRestException $e) {
+                $skip = TRUE;
                 //keep quiet
             }
-            if(!$opportunity_id) {
+            if (!$skip) {
+                $syncItem = new \stdClass();
+                $restOperation = "INSERT";
+                if ($opportunity_id) {
+                    $syncItem->id = $opportunity_id;
+                    $restOperation = "UPDATE";
+                }
+
+                $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->data_doc);
+
+                $syncItem->name = 'Opp. su ' . $cacheItem->database_metodo . ' - ' . $dataDoc->format("Y") . ' - '
+                                  . $cacheItem->document_number;
+                $syncItem->date_closed = $dataDoc->add(new \DateInterval('P15D'))->format('Y-m-d');
+                $syncItem->statovendita_c = '2';//Offerta
+                $syncItem->amount = $this->fixCurrency($cacheItem->tot_imponibile_euro);
+                $syncItem->amount_usdollar = $this->fixCurrency($cacheItem->tot_imponibile_euro);
+                $syncItem->assigned_user_id = $assignedUserId;
+                $syncItem->account_id = $remoteAccountId;
+
+                //create arguments for rest
+                $arguments = [
+                    'module_name' => 'Opportunities',
+                    'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
+                ];
+
+                $this->log("CRM SYNC OPPORTUNITIES[" . $restOperation . "]: " . json_encode($arguments));
+
+                try {
+                    $remoteOpportunityItem = $this->sugarCrmRest->comunicate('set_entries', $arguments);
+                    $this->log("REMOTE RESULT: " . json_encode($remoteOpportunityItem));
+                } catch(SugarCrmRestException $e) {
+                    //go ahead with false silently
+                    $this->log("REMOTE ERROR!!! - " . $e->getMessage());
+                }
+
+                //RELATE OPPORTUNITY TO OFFER
+                if (isset($remoteOpportunityItem->ids[0]) && !empty($remoteOpportunityItem->ids[0])) {
+                    $remoteOpportunityId = $remoteOpportunityItem->ids[0];
+
+                    $arguments = [
+                        'module_name' => 'AOS_Quotes',
+                        'module_id' => $remoteOfferId,
+                        'link_field_name' => 'opportunities',
+                        'related_ids' => [$remoteOpportunityId]
+                    ];
+                    try {
+                        $result = $this->sugarCrmRest->comunicate('set_relationship', $arguments);
+                        //$this->log("RELATIONSHIP RESULT: " . json_encode($result));
+                        if (!isset($result->created) || $result->created != 1) {
+                            $this->log("RELATIONSHIP ERROR!!! - " . json_encode($arguments));
+                            $remoteOpportunityItem = FALSE;
+                        }
+                        else {
+                            $this->log("RELATIONSHIP CREATED!!! - " . json_encode($result));
+                        }
+                    } catch(SugarCrmRestException $e) {
+                        //go ahead with false silently
+                        $this->log("REMOTE ERROR!!! - " . $e->getMessage() . " - " . json_encode($arguments));
+                        $remoteOpportunityItem = FALSE;
+                    }
+
+                }
             }
         }
-        return $result;
+        else {
+            $this->log("Opportunity is older than 2015-09-01");
+            $remoteOpportunityItem = TRUE;//so that cache item is still saved
+        }
+        return $remoteOpportunityItem;
     }
-    */
 
 
     /**
@@ -461,9 +523,13 @@ class OfferData extends Sync implements SyncInterface {
             ];
             try {
                 $result = $this->sugarCrmRest->comunicate('set_relationship', $arguments);
-                $this->log("RELATIONSHIP RESULT: " . json_encode($result));
+                //$this->log("RELATIONSHIP RESULT: " . json_encode($result));
                 if (!isset($result->created) || $result->created != 1) {
                     $this->log("RELATIONSHIP ERROR!!! - " . json_encode($arguments));
+                }
+                else {
+                    $result = new \stdClass();
+                    $result->ids = [$account_id];
                 }
             } catch(SugarCrmRestException $e) {
                 //go ahead with false silently
@@ -473,29 +539,6 @@ class OfferData extends Sync implements SyncInterface {
         return $result;
     }
 
-    /**
-     * They would be recreated all over again
-     * @param \stdClass $cacheItem
-     * @return string|bool
-     * @throws \Exception
-     */
-    protected function loadRemoteOfferGroupId($cacheItem) {
-        $crm_id = FALSE;
-
-        $arguments = [
-            'module_name' => 'AOS_Line_Item_Groups',
-            'query' => "aos_quotes_cstm.document_number_c = '" . $cacheItem->document_number
-                       . "' AND aos_quotes_cstm.metodo_database_c = '"
-                       . $cacheItem->database_metodo . "'",
-            'order_by' => "",
-            'offset' => 0,
-            'select_fields' => ['id'],
-            'link_name_to_fields_array' => [],
-            'max_results' => 2,
-            'deleted' => FALSE,
-            'Favorites' => FALSE,
-        ];
-    }
 
 
     /**
@@ -576,7 +619,7 @@ class OfferData extends Sync implements SyncInterface {
     protected function loadRemoteOfferId($cacheItem) {
         $arguments = [
             'module_name' => 'AOS_Quotes',
-            'query' => "aos_quotes_cstm.document_number_c = '" . $cacheItem->document_number
+            'query' => "aos_quotes_cstm.metodo_id_head_c = '" . $cacheItem->id_head
                        . "' AND aos_quotes_cstm.metodo_database_c = '"
                        . $cacheItem->database_metodo . "'",
             'order_by' => "",
@@ -648,7 +691,6 @@ class OfferData extends Sync implements SyncInterface {
             }
         }
         return ($crm_id);
-
     }
 
     /**
