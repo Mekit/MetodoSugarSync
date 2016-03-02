@@ -119,23 +119,8 @@ class OfferData extends Sync implements SyncInterface {
 
     protected function updateRemoteFromCache() {
         //OFFERS
-        $FORCE_LIMIT = FALSE;
-        $this->log("updating remote(offers)...");
-        $this->offerCacheDb->resetItemWalker();
-        $this->counters["remote"]["index"] = 0;
-        while ($cachedOfferItem = $this->offerCacheDb->getNextItem('metodo_last_update_time', $orderDir = 'DESC')) {
-            if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counters["remote"]["index"] >= $FORCE_LIMIT) {
-                $this->offerCacheDb->resetItemWalker();
-                break;
-            }
-            $this->counters["remote"]["index"]++;
-            $remoteOfferItem = $this->saveOfferOnRemote($cachedOfferItem);
-            $this->storeCrmIdForCachedOffer($cachedOfferItem, $remoteOfferItem);
-        }
-
-        //OFFER LINES
         $FORCE_LIMIT = 1;
-        $this->log("updating remote(offer lines)...");
+        $this->log("updating remote...");
         $this->offerCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
         while ($cachedOfferItem = $this->offerCacheDb->getNextItem('metodo_last_update_time', $orderDir = 'DESC')) {
@@ -144,12 +129,15 @@ class OfferData extends Sync implements SyncInterface {
                 break;
             }
             $this->counters["remote"]["index"]++;
+
             $cachedOfferLines = $this->offerLineCacheDb->loadItems(
                 ['offer_id' => $cachedOfferItem->id],
                 ['line_order' => 'ASC']
             );
+
+            $remoteOfferItem = $this->saveOfferOnRemote($cachedOfferItem, $cachedOfferLines);
+            $this->storeCrmIdForCachedOffer($cachedOfferItem, $remoteOfferItem);
             $this->saveOfferLinesOnRemote($cachedOfferItem, $cachedOfferLines);
-            //$this->storeCrmIdForCachedOffer($cachedOfferItem, $remoteOfferItem);
         }
     }
 
@@ -198,11 +186,12 @@ class OfferData extends Sync implements SyncInterface {
 
         /** @var \stdClass $cachedOfferLine */
         foreach ($cachedOfferLines as $cachedOfferLine) {
-            $remoteLineId = $this->saveOfferLineOnRemote($cachedOfferLine, $remoteOfferId, $remoteLineGroupID);
-            $this->log("OfferLines - LINE ID: " . json_encode($remoteLineId));
+            $remoteOfferLineItem = $this->saveOfferLineOnRemote($cachedOfferLine, $remoteOfferId, $remoteLineGroupID);
+            //$this->log("OfferLines - LINE ID: " . json_encode($remoteLineItem));
+
+            /* @todo: this is not working - IT BLOCKS!!! */
+            //$this->storeCrmIdForCachedOfferLine($cachedOfferLine, $remoteOfferLineItem);
         }
-
-
     }
 
     /**
@@ -212,7 +201,7 @@ class OfferData extends Sync implements SyncInterface {
      * @return bool|\stdClass
      */
     protected function saveOfferLineOnRemote($cachedOfferLine, $remoteOfferId, $remoteLineGroupID) {
-        $remoteItem = FALSE;
+        $remoteOfferLineItem = FALSE;
         $ISO = 'Y-m-d\TH:i:sO';
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cachedOfferLine->metodo_last_update_time);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cachedOfferLine->crm_last_update_time);
@@ -226,7 +215,7 @@ class OfferData extends Sync implements SyncInterface {
                 $crm_line_id = $this->loadRemoteOfferLineId($cachedOfferLine);
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD LINE ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-                return $remoteItem;
+                return $remoteOfferLineItem;
             }
 
             $syncItem = new \stdClass();
@@ -320,95 +309,7 @@ class OfferData extends Sync implements SyncInterface {
                 $remoteOfferLineItem->updateFailure = TRUE;
             }
         }
-        return $remoteItem;
-    }
-
-
-    protected function saveOfferLinesOnRemote___OLD($cacheItem) {
-        $remoteItem = FALSE;
-        $ISO = 'Y-m-d\TH:i:sO';
-        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time);
-        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time);
-
-        if ($metodoLastUpdate > $crmLastUpdate) {
-            $this->log(
-                "-----------------------------------------------------------------------------------------"
-                . $this->counters["remote"]["index"]
-            );
-
-            try {
-                $crm_line_id = $this->loadRemoteOfferLineId($cacheItem);
-            } catch(\Exception $e) {
-                $this->log("CANNOT LOAD LINE ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-                return $remoteItem;
-            }
-
-            $syncItem = clone($cacheItem);
-            unset($syncItem->id);
-            unset($syncItem->crm_id);
-            unset($syncItem->offer_id);
-            unset($syncItem->crm_last_update_time);
-
-
-            //add id to sync item for update
-            $restOperation = "INSERT";
-            if ($crm_line_id) {
-                $syncItem->id = $crm_line_id;
-                $restOperation = "UPDATE";
-            }
-
-            $syncItem->metodo_database = strtolower($syncItem->database_metodo);
-            unset($syncItem->database_metodo);
-
-            $syncItem->article_description = str_replace('=', '.', $syncItem->article_description);//don't ask why but with '=' in desc it wont work
-
-            $syncItem->gross_total = $this->fixCurrency($syncItem->gross_total);
-            $syncItem->net_total = $this->fixCurrency($syncItem->net_total);
-            $syncItem->net_total_listino_42 = $this->fixCurrency($syncItem->net_total_listino_42);
-
-            $total_discount = $cacheItem->net_total_listino_42 - $cacheItem->net_total;
-            $syncItem->total_discount = $this->fixCurrency($total_discount);
-
-            if ($cacheItem->net_total != 0) {
-                $discount_percent = ($total_discount / $cacheItem->net_total_listino_42) * 100;
-            }
-            else {
-                $discount_percent = 0;
-            }
-            $syncItem->discount_perc_number = $this->fixCurrency($discount_percent, 2);
-
-
-            $syncItem->quantity = $this->fixCurrency($syncItem->quantity);
-
-
-            $syncItem->metodo_last_update_time = $metodoLastUpdate->format('Y-m-d H:i:s');
-
-            //create arguments for rest
-            $arguments = [
-                'module_name' => 'mkt_Offers_Lines',
-                'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
-            ];
-            $this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
-
-            try {
-                $remoteOfferLineItem = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-                $this->log("REMOTE OfferLine RESULT: " . json_encode($remoteOfferLineItem));
-            } catch(SugarCrmRestException $e) {
-                //go ahead with false silently
-                $this->log("REMOTE ERROR!!! - " . $e->getMessage());
-                //we must remove crm_id from $cacheItem
-                //create fake result
-                $remoteOfferLineItem = new \stdClass();
-                $remoteOfferLineItem->updateFailure = TRUE;
-            }
-
-            if (isset($remoteOfferLineItem->ids[0]) && !empty($remoteOfferLineItem->ids[0])) {
-                $crm_line_id = $remoteOfferLineItem->ids[0];
-                $this->relateOfferLineToOfferOnRemote($cacheItem, $crm_line_id);
-            }
-        }
-
-        return $remoteItem;
+        return $remoteOfferLineItem;
     }
 
 
@@ -510,61 +411,13 @@ class OfferData extends Sync implements SyncInterface {
     }
 
 
-    /**
-     * @param \stdClass $cacheItem
-     * @param string    $remoteOfferLineId
-     * @return \stdClass|bool
-     */
-    protected function relateOfferLineToOfferOnRemote___OLD($cacheItem, $remoteOfferLineId) {
-        $result = FALSE;
-
-        if ($remoteOfferLineId) {
-            $this->log(
-                "-----------------------------------------------------------------------------------------"
-                . $this->counters["remote"]["index"]
-            );
-
-            //get cached offer by id
-            $filter = [
-                'id' => $cacheItem->offer_id,
-            ];
-            $candidates = $this->offerCacheDb->loadItems($filter);
-            if ($candidates && count($candidates) == 1) {
-                $cachedOffer = $candidates[0];
-                $offerCrmId = $cachedOffer->crm_id;
-                if ($offerCrmId) {
-                    $this->log("Creating Offer($offerCrmId) - OfferLine($remoteOfferLineId) relationship...");
-
-                    /*
-                    try {
-                        $linkData = [
-                            "link_name" => 'mkt_offers_mkt_offer_lines',
-                            "ids" => [$offerLineCrmId]
-                        ];
-                        $result = $this->sugarCrmRest->comunicate(
-                            '/mkt_Offers/' . $offerCrmId . '/link', 'POST', $linkData
-                        );
-                        $this->log("LINKED: " . json_encode($result));
-                        $result = TRUE;
-                    } catch(SugarCrmRestException $e) {
-                        //go ahead with false silently
-                        $this->log("REMOTE RELATIONSHIP ERROR!!! - " . $e->getMessage());
-                    }
-                    */
-                }
-            }
-        }
-        return $result;
-    }
-
-
-
     //-------------------------------------------------------------------------------------------------REMOTE SYNC OFFER
     /**
      * @param \stdClass $cacheItem
+     * @param array     $cachedOfferLines
      * @return \stdClass|bool
      */
-    protected function saveOfferOnRemote($cacheItem) {
+    protected function saveOfferOnRemote($cacheItem, $cachedOfferLines) {
         $remoteOfferItem = FALSE;
         $ISO = 'Y-m-d\TH:i:sO';
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time);
@@ -621,19 +474,34 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem->dsc_payment_c = $cacheItem->dsc_payment;
 
 
+            $groupData = $this->createGroupDataFromOfferLines($cachedOfferLines, NULL, NULL);
+
+            //TOTALE BEFORE DISCOUNT
+            $syncItem->total_amt = $groupData->total_amt;
+            $syncItem->total_amt_usdollar = $groupData->total_amt_usdollar;
+
+            //TOTALE AFTER DISCOUNT
+            $syncItem->subtotal_amount = $groupData->subtotal_amount;
+            $syncItem->subtotal_amount_usdollar = $groupData->subtotal_amount_usdollar;
+
+            //TOTALE DISCOUNT
+            $syncItem->discount_amount = $groupData->discount_amount;
+            $syncItem->discount_amount_usdollar = $groupData->discount_amount_usdollar;
+
+            //TOTALE TAX
+            $syncItem->tax_amount = $groupData->tax_amount;
+            $syncItem->tax_amount_usdollar = $groupData->tax_amount_usdollar;
+
+            //SHIPPING
+            $syncItem->shipping_amount = 0;
+            $syncItem->shipping_amount_usdollar = 0;
+            $syncItem->shipping_tax = 0;
+            $syncItem->shipping_tax_amt = 0;
+            $syncItem->shipping_tax_amt_usdollar = 0;
+
             //TOTALE DOCUMENTO
-            $syncItem->total_amount = $this->fixCurrency($cacheItem->tot_documento_euro);
-            $syncItem->total_amount_usdollar = $this->fixCurrency($cacheItem->tot_documento_euro);
-
-            //IMPONIBILE DOCUMENTO
-            $syncItem->total_amt = $this->fixCurrency($cacheItem->tot_imponibile_euro);
-            $syncItem->total_amt_usdollar = $this->fixCurrency($cacheItem->tot_imponibile_euro);
-            $syncItem->subtotal_amount = $this->fixCurrency($cacheItem->tot_imponibile_euro);
-            $syncItem->subtotal_amount_usdollar = $this->fixCurrency($cacheItem->tot_imponibile_euro);
-
-            //IMPOSTA DOCUMENTO
-            $syncItem->tax_amount = $this->fixCurrency($cacheItem->tot_imposta_euro);
-            $syncItem->tax_amount_usdollar = $this->fixCurrency($cacheItem->tot_imposta_euro);
+            $syncItem->total_amount = $groupData->total_amount;
+            $syncItem->total_amount_usdollar = $groupData->total_amount_usdollar;
 
 
             //create arguments for rest
@@ -1262,6 +1130,10 @@ class OfferData extends Sync implements SyncInterface {
         if ($remoteItem) {
             $cacheUpdateItem = new \stdClass();
             $cacheUpdateItem->id = $cacheItem->id;
+            $remoteItemId = FALSE;
+            if (isset($remoteItem->ids[0]) && !empty($remoteItem->ids[0])) {
+                $remoteItemId = $remoteItem->ids[0];
+            }
             if (isset($remoteItem->updateFailure) && $remoteItem->updateFailure) {
                 //we must remove crm_id and reset crm_last_update_time on $cacheItem
                 $cacheUpdateItem->crm_id = NULL;
@@ -1269,10 +1141,11 @@ class OfferData extends Sync implements SyncInterface {
                 $cacheUpdateItem->crm_last_update_time = $oldDate->format("c");
             }
             else {
-                $cacheUpdateItem->crm_id = $remoteItem->id;
+                $cacheUpdateItem->crm_id = $remoteItemId;
                 $now = new \DateTime();
                 $cacheUpdateItem->crm_last_update_time = $now->format("c");
             }
+            $this->log("UPDATING CACHED LINE ITEM: " . json_encode($cacheUpdateItem));
             $this->offerLineCacheDb->updateItem($cacheUpdateItem);
         }
     }
