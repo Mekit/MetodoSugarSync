@@ -501,6 +501,8 @@ class AccountData extends Sync implements SyncInterface {
         $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
         //add other data on item
+
+        //@todo: implement this
         $cacheUpdateItem->crm_export_flag_c = $localItem->CrmExportFlag;
         $cacheUpdateItem->name = $localItem->RagioneSociale;
 

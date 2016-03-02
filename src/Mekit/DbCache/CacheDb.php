@@ -42,31 +42,60 @@ class CacheDb extends SqliteDb {
 
     /**
      * @param array $filter
+     * @param array $order
      * @return bool|array
      */
-    public function loadItems($filter) {
+    public function loadItems($filter, $order = NULL) {
         $answer = FALSE;
         try {
             if (count($filter)) {
-                $query = "SELECT * FROM " . $this->dataIdentifier . " WHERE";
-                $filterIndex = 1;
-                $maxFilters = count($filter);
+                $query = "SELECT * FROM " . $this->dataIdentifier;
                 $parameters = [];
-                foreach ($filter as $columnName => $columnValue) {
-                    $paramName = ':' . $columnName;
-                    $query .= ' ' . $columnName . ' = ' . $paramName . ($filterIndex < $maxFilters ? " AND" : "");
-                    $parameters[$paramName] = $columnValue;
-                    $filterIndex++;
-                }
-                //$this->log("Query: " . $query . " - Params: " . json_encode($parameters));
-                $stmt = $this->db->prepare($query);
 
+                //FILTERS
+                if (count($filter)) {
+                    $query .= " WHERE";
+                    $filterIndex = 1;
+                    $maxFilters = count($filter);
+                    foreach ($filter as $columnName => $columnValue) {
+                        $paramName = ':' . $columnName;
+                        $query .= ' ' . $columnName . ' = ' . $paramName . ($filterIndex < $maxFilters ? " AND" : "");
+                        $parameters[$paramName] = $columnValue;
+                        $filterIndex++;
+                    }
+                }
+
+                //ORDER
+                if (count($order)) {
+                    $query .= " ORDER BY";
+                    $orderIndex = 1;
+                    $maxOrder = count($order);
+                    foreach ($order as $columnName => $columnDirection) {
+                        $columnDirection = strtoupper(
+                            (!in_array(
+                                strtoupper($columnDirection), [
+                                'ASC',
+                                'DESC'
+                            ]
+                            ) ? 'ASC' : $columnDirection)
+                        );
+                        $query .= ' ' . $columnName . ' ' . $columnDirection . ($orderIndex < $maxOrder ? "," : "");
+                    }
+                }
+
+                $stmt = $this->db->prepare($query);
                 if ($stmt->execute($parameters)) {
                     $answer = $stmt->fetchAll(\PDO::FETCH_OBJ);
                 }
             }
         } catch(\PDOException $e) {
             $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
+            if (isset($query)) {
+                $this->log(__CLASS__ . " - SQL: " . $query);
+            }
+            if (isset($parameters)) {
+                $this->log(__CLASS__ . " - PARAMETERS: " . json_encode($parameters));
+            }
         }
         return $answer;
     }
@@ -102,7 +131,7 @@ class CacheDb extends SqliteDb {
                 $this->log(__CLASS__ . " - SQL: " . $query);
             }
             if (isset($parameters)) {
-                $this->log(__CLASS__ . " - PARAMETERS: " . $parameters);
+                $this->log(__CLASS__ . " - PARAMETERS: " . json_encode($parameters));
             }
         }
         return $answer;

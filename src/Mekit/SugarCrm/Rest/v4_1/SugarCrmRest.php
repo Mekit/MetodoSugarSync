@@ -36,6 +36,7 @@ class SugarCrmRest {
                 unlink($sessionFilePath);
                 $this->sessionId = FALSE;
             }
+            throw $e;
         }
         return $result;
     }
@@ -111,8 +112,8 @@ class SugarCrmRest {
             $sessionFilePath = $cfg["global"]["temporary_path"] . '/' . $this->sessionFileName;
             if (file_exists($sessionFilePath)) {
                 /** @var \stdClass $sessionData */
-                $sessionData = unserialize(file_get_contents($sessionFilePath));
-                if ($this->checkIfSessionIsValid($sessionData->id)) {
+                $sessionData = @unserialize(file_get_contents($sessionFilePath));
+                if ($sessionData && $this->checkIfSessionIsValid($sessionData->id)) {
                     $this->sessionId = $sessionData->id;
                 }
                 else {
