@@ -10,6 +10,7 @@ namespace Mekit\Sync\MetodoToCrm;
 use Mekit\Console\Configuration;
 use Mekit\DbCache\OfferCache;
 use Mekit\DbCache\OfferLineCache;
+use Mekit\DbCache\ProductCache;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\Sync;
@@ -29,6 +30,9 @@ class OfferData extends Sync implements SyncInterface {
     /** @var OfferLineCache */
     protected $offerLineCacheDb;
 
+    /** @var ProductCache */
+    protected $productCache;
+
     /** @var  \PDOStatement */
     protected $localItemStatement;
 
@@ -41,6 +45,12 @@ class OfferData extends Sync implements SyncInterface {
     /** @var array */
     protected $counters = [];
 
+    /** @var array */
+    protected $product_codes_vat_10 = ['FESEF002', 'PHF046', 'PHAC75', 'PHF004'];
+
+    /** @var string */
+    protected $offer_sync_limit_date = '2015-01-01';
+
     /**
      * @param callable $logger
      */
@@ -48,6 +58,7 @@ class OfferData extends Sync implements SyncInterface {
         parent::__construct($logger);
         $this->offerCacheDb = new OfferCache('Offers', $logger);
         $this->offerLineCacheDb = new OfferLineCache('Offers_Lines', $logger);
+        $this->productCache = new ProductCache('Products', $logger);
         $this->sugarCrmRest = new SugarCrmRest();
     }
 
@@ -102,7 +113,6 @@ class OfferData extends Sync implements SyncInterface {
             }
         }
 
-
         $this->log("updating local cache(offer lines)...");
         $this->counters["cache"]["index"] = 0;
         foreach (["MEKIT", "IMP"] as $database) {
@@ -119,7 +129,7 @@ class OfferData extends Sync implements SyncInterface {
 
     protected function updateRemoteFromCache() {
         //OFFERS
-        $FORCE_LIMIT = 1;
+        $FORCE_LIMIT = FALSE;
         $this->log("updating remote...");
         $this->offerCacheDb->resetItemWalker();
         $this->counters["remote"]["index"] = 0;
@@ -158,39 +168,41 @@ class OfferData extends Sync implements SyncInterface {
             $this->log("OfferLInes - No lines for this offer - SKIPPING!");
             return;
         }
+        //we wiil use date of the offer to decide if to update lines
+        $ISO = 'Y-m-d\TH:i:sO';
+        $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cachedOfferItem->metodo_last_update_time);
+        $crmLastUpdate = \DateTime::createFromFormat($ISO, $cachedOfferItem->crm_last_update_time);
+        if ($metodoLastUpdate > $crmLastUpdate) {
 
-        $remoteOfferId = $cachedOfferItem->crm_id;
+            $remoteOfferId = $cachedOfferItem->crm_id;
 
+            //get Line Group Id
+            try {
+                $remoteLineGroupID = $this->loadRemoteOfferLineGroupId($cachedOfferItem);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+                return;
+            }
 
-        //get Line Group Id
-        try {
-            $remoteLineGroupID = $this->loadRemoteOfferLineGroupId($cachedOfferItem);
-        } catch(\Exception $e) {
-            $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-            return;
-        }
+            //Save Line Group
+            $groupData = $this->createGroupDataFromOfferLines($cachedOfferLines, $remoteOfferId, $remoteLineGroupID);
+            try {
+                $remoteLineGroupID = $this->saveOfferLineGroupOnRemote($groupData);
+            } catch(\Exception $e) {
+                $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
+                return;
+            }
 
-        //Save Line Group
-        $groupData = $this->createGroupDataFromOfferLines($cachedOfferLines, $remoteOfferId, $remoteLineGroupID);
-        try {
-            $remoteLineGroupID = $this->saveOfferLineGroupOnRemote($groupData);
-        } catch(\Exception $e) {
-            $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-            return;
-        }
+            if (!$remoteLineGroupID) {
+                $this->log("OfferLines - No remote group id - SKIPPING!");
+                return;
+            }
 
-        if (!$remoteLineGroupID) {
-            $this->log("OfferLines - No remote group id - SKIPPING!");
-            return;
-        }
-
-        /** @var \stdClass $cachedOfferLine */
-        foreach ($cachedOfferLines as $cachedOfferLine) {
-            $remoteOfferLineItem = $this->saveOfferLineOnRemote($cachedOfferLine, $remoteOfferId, $remoteLineGroupID);
-            //$this->log("OfferLines - LINE ID: " . json_encode($remoteLineItem));
-
-            /* @todo: this is not working - IT BLOCKS!!! */
-            //$this->storeCrmIdForCachedOfferLine($cachedOfferLine, $remoteOfferLineItem);
+            /** @var \stdClass $cachedOfferLine */
+            foreach ($cachedOfferLines as $cachedOfferLine) {
+                $this->saveOfferLineOnRemote($cachedOfferLine, $remoteOfferId, $remoteLineGroupID);
+                //$this->log("OfferLines - LINE ID: " . json_encode($remoteLineItem));
+            }
         }
     }
 
@@ -228,26 +240,47 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem->parent_type = 'AOS_Quotes';
             $syncItem->parent_id = $remoteOfferId;
             $syncItem->group_id = $remoteLineGroupID;
-            //$syncItem->product_id = null;
 
-
-            $syncItem->name = $cachedOfferLine->article_code;
+            $syncItem->name = substr($cachedOfferLine->article_description, 0, 32)
+                              . (strlen($cachedOfferLine->article_description) > 32 ? '...' : '');
             $syncItem->part_number = $cachedOfferLine->article_code;
             $syncItem->item_description = $cachedOfferLine->article_description;
             $syncItem->pricelist_number_c = $cachedOfferLine->price_list_number;
-
-
             $syncItem->measurement_unit_c = $cachedOfferLine->measure_unit;
-
             $syncItem->currency_id = '-99';
 
-            $product_codes_vat_10 = [
-                'FESEF002',
-                'PHF046',
-                'PHAC75',
-                'PHF004'
-            ];
+            $calc = $this->getCalculatedValuesForOfferLine($cachedOfferLine);
 
+            if ($calc['product_crm_id']) {
+                $syncItem->product_id = $calc['product_crm_id'];
+            }
+
+            $syncItem->product_qty = $this->fixCurrency($calc['product_qty']);
+
+            $syncItem->product_cost_price = $this->fixCurrency($calc['product_cost_price']);
+            $syncItem->product_cost_price_usdollar = $this->fixCurrency($calc['product_cost_price']);
+
+            $syncItem->product_list_price = $this->fixCurrency($calc['product_list_price_unit']);
+            $syncItem->product_list_price_usdollar = $this->fixCurrency($calc['product_list_price_unit']);
+
+            $syncItem->discount = $calc['discount_type'];
+            $syncItem->product_discount = $this->fixCurrency($calc['product_discount']);
+            $syncItem->product_discount_usdollar = $this->fixCurrency($calc['product_discount']);
+            $syncItem->product_discount_amount = $this->fixCurrency($calc['product_discount_amount_unit']);
+            $syncItem->product_discount_amount_usdollar = $this->fixCurrency($calc['product_discount_amount_unit']);
+
+            $syncItem->product_unit_price = $this->fixCurrency($calc['product_unit_price']);
+            $syncItem->product_unit_price_usdollar = $this->fixCurrency($calc['product_unit_price']);
+
+            $syncItem->vat = $calc['vat'];
+            $syncItem->vat_amt = $this->fixCurrency($calc['vat_amt']);
+            $syncItem->vat_amt_usdollar = $this->fixCurrency($calc['vat_amt']);
+
+            $syncItem->product_total_price = $this->fixCurrency($calc['product_total_price']);
+            $syncItem->product_total_price_usdollar = $this->fixCurrency($calc['product_total_price']);
+
+
+            /*
             $quantity = (float) $cachedOfferLine->quantity;
             $net_total = !empty($cachedOfferLine->net_total) ? (float) $cachedOfferLine->net_total : 0;
             $net_total_l42 = !empty($cachedOfferLine->net_total_listino_42) ? (float) $cachedOfferLine->net_total_listino_42 : 0;
@@ -280,8 +313,8 @@ class OfferData extends Sync implements SyncInterface {
 
             $syncItem->product_total_price = $this->fixCurrency($net_total + $taxTotal);
             $syncItem->product_total_price_usdollar = $this->fixCurrency($net_total + $taxTotal);
+            */
 
-            //$syncItem->metodo_last_update_time = $metodoLastUpdate->format('Y-m-d H:i:s');
 
             //add id to sync item for update
             $restOperation = "INSERT";
@@ -311,7 +344,6 @@ class OfferData extends Sync implements SyncInterface {
         }
         return $remoteOfferLineItem;
     }
-
 
     /**
      * @param \stdClass $groupData
@@ -361,26 +393,19 @@ class OfferData extends Sync implements SyncInterface {
         $answer->parent_type = 'AOS_Quotes';
         $answer->parent_id = $crm_offer_id;
 
-
-        $product_codes_vat_10 = [
-            'FESEF002',
-            'PHF046',
-            'PHAC75',
-            'PHF004'
-        ];
-
         $netTotal = 0;
         $netTotal42 = 0;
+        $discountTotal = 0;
         $taxTotal = 0;
 
         /** @var \stdClass $cachedOfferLine */
         foreach ($cachedOfferLines as $cachedOfferLine) {
-            $netTotal += (float) $cachedOfferLine->net_total;
-            $netTotal42 += (float) $cachedOfferLine->net_total_listino_42;
-            $tax_multiplier = (in_array($cachedOfferLine->article_code, $product_codes_vat_10) ? 0.1 : 0.22);
-            $taxTotal += ((float) $cachedOfferLine->net_total * $tax_multiplier);
+            $calc = $this->getCalculatedValuesForOfferLine($cachedOfferLine);
+            $netTotal += $calc['product_total_price'];
+            $netTotal42 += $calc['product_list_price'];
+            $discountTotal += $calc['product_discount_amount'];
+            $taxTotal += $calc['vat_amt'];
         }
-        $discountTotal = $netTotal - $netTotal42;
         $grossTotal = $netTotal + $taxTotal;
 
         //Totale - Prezzo Da Listino 42
@@ -406,6 +431,95 @@ class OfferData extends Sync implements SyncInterface {
         //Totale IVATO
         $answer->total_amount = $this->fixCurrency($grossTotal);
         $answer->total_amount_usdollar = $this->fixCurrency($grossTotal);
+
+        return $answer;
+    }
+
+    /**
+     * @param \stdClass $cachedOfferLine
+     * @return array
+     */
+    protected function getCalculatedValuesForOfferLine($cachedOfferLine) {
+        $answer = [
+            'product_crm_id' => NULL,
+            'product_qty' => 0,
+            'product_cost_price' => 0,
+            'product_list_price' => 0,
+            'product_list_price_unit' => 0,
+            'discount_type' => 'Percentage',
+            'product_discount' => 0,
+            'product_discount_amount' => 0,
+            'product_discount_amount_unit' => 0,
+            'product_unit_price' => 0,
+            'vat' => '22.0',
+            'vat_amt' => 0,
+            'product_total_price' => 0
+        ];
+
+        //FIND PRODUCT
+        $relatedProduct = FALSE;
+        if (!empty($cachedOfferLine->article_code)) {
+            $candidates = $this->productCache->loadItems(['id' => $cachedOfferLine->article_code]);
+            //there should be ONLY ONE
+            if (isset($candidates[0])) {
+                $relatedProduct = $candidates[0];
+                if (!empty($relatedProduct->crm_id)) {
+                    $answer['product_crm_id'] = $relatedProduct->crm_id;
+                }
+            }
+        }
+
+        //GENERIC LOCAL VALUES
+        $quantity = (float) $cachedOfferLine->quantity;
+        $net_unit = !empty($cachedOfferLine->net_unit) ? (float) $cachedOfferLine->net_unit : 0;
+        $net_total = !empty($cachedOfferLine->net_total) ? (float) $cachedOfferLine->net_total : 0;
+        $net_total_l42 = !empty($cachedOfferLine->net_total_listino_42) ? (float) $cachedOfferLine->net_total_listino_42 : 0;
+        $discount_total = $net_total_l42 - $net_total;
+        $discount_percent = 0;
+        if ($net_total_l42 != 0) {
+            $discount_percent = (100 * (1 - ($net_total / $net_total_l42)));
+        }
+        $tax_rate = (in_array($cachedOfferLine->article_code, $this->product_codes_vat_10) ? 10 : 22);
+        $tax_multiplier = $tax_rate / 100;
+        $taxTotal = $net_total * $tax_multiplier;
+
+        //QUANTITY
+        $answer['product_qty'] = $quantity;
+
+        //Costo Prodotto
+        if ($relatedProduct) {
+            $product_cost = !empty($relatedProduct->cost) ? (float) $relatedProduct->cost : 0;
+            $answer['product_cost_price'] = $product_cost;
+        }
+
+        //Prezzo Prodotto - L42
+        $answer['product_list_price'] = $net_total_l42;
+        if ($quantity != 0) {
+            $answer['product_list_price_unit'] = ($net_total_l42 / $quantity);
+        }
+        else {
+            $answer['product_list_price_unit'] = 0;
+        }
+
+        //SCONTO
+        $answer['product_discount'] = $discount_percent;
+        $answer['product_discount_amount'] = (0 - $discount_total);//this must be negative
+        if ($quantity != 0) {
+            $answer['product_discount_amount_unit'] = (0 - ($discount_total / $quantity));
+        }
+        else {
+            $answer['product_discount_amount_unit'] = 0;
+        }
+
+        //Product Unit price
+        $answer['product_unit_price'] = $net_unit;
+
+        //TAX
+        $answer['vat'] = $tax_rate . '.0';//this is dropdown and needs '22.0' or '10.0'
+        $answer['vat_amt'] = $taxTotal;
+
+        //TOTAL PRICE
+        $answer['product_total_price'] = $net_total;
 
         return $answer;
     }
@@ -986,18 +1100,18 @@ class OfferData extends Sync implements SyncInterface {
 
     //------------------------------------------------------------------------------------------------------CACHE(OFFER)
     /**
-     * @param \stdClass $cacheItem
-     * @param \stdClass $remoteItem
+     * @param \stdClass $cachedOfferItem
+     * @param \stdClass $remoteOfferItem
      */
-    protected function storeCrmIdForCachedOffer($cacheItem, $remoteItem) {
-        if ($remoteItem) {
+    protected function storeCrmIdForCachedOffer(&$cachedOfferItem, $remoteOfferItem) {
+        if ($remoteOfferItem) {
             $cacheUpdateItem = new \stdClass();
-            $cacheUpdateItem->id = $cacheItem->id;
+            $cacheUpdateItem->id = $cachedOfferItem->id;
             $remoteItemId = FALSE;
-            if (isset($remoteItem->ids[0]) && !empty($remoteItem->ids[0])) {
-                $remoteItemId = $remoteItem->ids[0];
+            if (isset($remoteOfferItem->ids[0]) && !empty($remoteOfferItem->ids[0])) {
+                $remoteItemId = $remoteOfferItem->ids[0];
             }
-            if ((isset($remoteItem->updateFailure) && $remoteItem->updateFailure) || !$remoteItemId) {
+            if ((isset($remoteOfferItem->updateFailure) && $remoteOfferItem->updateFailure) || !$remoteItemId) {
                 //we must remove crm_id and reset crm_last_update_time on $cacheItem
                 $cacheUpdateItem->crm_id = NULL;
                 $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
@@ -1007,6 +1121,8 @@ class OfferData extends Sync implements SyncInterface {
                 $cacheUpdateItem->crm_id = $remoteItemId;
                 $now = new \DateTime();
                 $cacheUpdateItem->crm_last_update_time = $now->format("c");
+                //set if also on $cachedOfferItem so that we don't have to reload it
+                $cachedOfferItem->crm_id = $remoteItemId;
             }
             $this->offerCacheDb->updateItem($cacheUpdateItem);
         }
@@ -1299,7 +1415,8 @@ class OfferData extends Sync implements SyncInterface {
                 FROM [${database}].[dbo].[TESTEDOCUMENTI] AS TD
                 LEFT OUTER JOIN [${database}].[dbo].[TABPAGAMENTI] AS TP ON TD.CODPAGAMENTO = TP.CODICE
                 LEFT OUTER JOIN [${database}].[dbo].[EXTRATESTEDOC] AS ET ON ET.IDTESTA = TD.PROGRESSIVO
-                WHERE TD.TIPODOC = 'OFC' AND TD.DATADOC >= '2015-01-01';
+                WHERE TD.TIPODOC = 'OFC'
+                AND TD.DATADOC >= '" . $this->offer_sync_limit_date . "'
             ";
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
@@ -1331,6 +1448,7 @@ class OfferData extends Sync implements SyncInterface {
                 (CASE WHEN RD.TIPORIGA = 'V' THEN 0 ELSE RD.QTAPREZZO * TD.SEGNO END) AS quantity,
                 RD.UMPREZZO AS measure_unit,
                 RD.TOTNETTORIGAEURO * TD.SEGNO AS net_total,
+                RD.PREZZOUNITNETTOEURO * TD.SEGNO AS net_unit,
                 CASE WHEN NULLIF(RD.CODART, '') IS NOT NULL THEN
                 (CASE WHEN RD.TIPORIGA = 'V' THEN 0 ELSE RD.QTAPREZZO * TD.SEGNO END) * ART.PREZZOEURO
                 ELSE 0
@@ -1340,12 +1458,10 @@ class OfferData extends Sync implements SyncInterface {
                 [${database}].[dbo].[TESTEDOCUMENTI] AS TD
                 INNER JOIN [${database}].[dbo].[RIGHEDOCUMENTI] AS RD ON TD.PROGRESSIVO = RD.IDTESTA
                 LEFT OUTER JOIN [${database}].[dbo].[LISTINIARTICOLI] AS ART ON RD.CODART = ART.CODART AND ART.NRLISTINO = 42
-                WHERE TD.TIPODOC = 'OFC' AND TD.DATADOC >= '2015-01-01'
+                WHERE TD.TIPODOC = 'OFC'
+                AND TD.DATADOC >= '" . $this->offer_sync_limit_date . "'
                 ORDER BY TD.PROGRESSIVO;
             ";
-
-            //REMOVED - RD.TOTLORDORIGAEURO * TD.SEGNO AS gross_total,
-
             $this->localItemStatement = $db->prepare($sql);
             $this->localItemStatement->execute();
         }

@@ -22,6 +22,7 @@ class OfferLineCache extends CacheDb {
         'quantity' => ['type' => 'TEXT', 'index' => FALSE],
         'measure_unit' => ['type' => 'TEXT', 'index' => FALSE],
         'net_total' => ['type' => 'TEXT', 'index' => FALSE],
+        'net_unit' => ['type' => 'TEXT', 'index' => FALSE],
         'net_total_listino_42' => ['type' => 'TEXT', 'index' => FALSE],
         'metodo_last_update_time' => ['type' => 'TEXT', 'index' => FALSE],
         'crm_last_update_time' => ['type' => 'TEXT', 'index' => FALSE]
