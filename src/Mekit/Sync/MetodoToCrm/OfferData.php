@@ -187,6 +187,7 @@ class OfferData extends Sync implements SyncInterface {
             //Save Line Group
             $groupData = $this->createGroupDataFromOfferLines($cachedOfferLines, $remoteOfferId, $remoteLineGroupID);
             try {
+                $groupData->discount_percent_c = $groupData->discount_percent;
                 $remoteLineGroupID = $this->saveOfferLineGroupOnRemote($groupData);
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
@@ -241,8 +242,8 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem->parent_id = $remoteOfferId;
             $syncItem->group_id = $remoteLineGroupID;
 
-            $syncItem->name = substr($cachedOfferLine->article_description, 0, 64)
-                              . (strlen($cachedOfferLine->article_description) > 64 ? '...' : '');
+            $syncItem->name = substr($cachedOfferLine->article_description, 0, 128)
+                              . (strlen($cachedOfferLine->article_description) > 128 ? '...' : '');
             $syncItem->part_number = $cachedOfferLine->article_code;
             $syncItem->item_description = $cachedOfferLine->article_description;
             $syncItem->pricelist_number_c = $cachedOfferLine->price_list_number;
@@ -371,6 +372,12 @@ class OfferData extends Sync implements SyncInterface {
         }
         $grossTotal = $netTotal + $taxTotal;
 
+        $discountPercent = 0;
+        if ($netTotal42 != 0) {
+            $discountPercent = (100 * (1 - ($netTotal / $netTotal42)));
+        }
+
+
         //Totale - Prezzo Da Listino 42
         $answer->total_amt = $this->fixCurrency($netTotal42);
         $answer->total_amt_usdollar = $this->fixCurrency($netTotal42);
@@ -378,6 +385,7 @@ class OfferData extends Sync implements SyncInterface {
         //Sconto
         $answer->discount_amount = $this->fixCurrency($discountTotal);
         $answer->discount_amount_usdollar = $this->fixCurrency($discountTotal);
+        $answer->discount_percent = $this->fixCurrency($discountPercent, 1);
 
         //Imponibile
         $answer->subtotal_amount = $this->fixCurrency($netTotal);
@@ -564,6 +572,9 @@ class OfferData extends Sync implements SyncInterface {
             //TOTALE DISCOUNT
             $syncItem->discount_amount = $groupData->discount_amount;
             $syncItem->discount_amount_usdollar = $groupData->discount_amount_usdollar;
+
+            //TOTALE DISCOUNT(%)
+            $syncItem->discount_percent_c = $groupData->discount_percent;
 
             //TOTALE TAX
             $syncItem->tax_amount = $groupData->tax_amount;
