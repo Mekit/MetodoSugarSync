@@ -241,8 +241,8 @@ class OfferData extends Sync implements SyncInterface {
             $syncItem->parent_id = $remoteOfferId;
             $syncItem->group_id = $remoteLineGroupID;
 
-            $syncItem->name = substr($cachedOfferLine->article_description, 0, 32)
-                              . (strlen($cachedOfferLine->article_description) > 32 ? '...' : '');
+            $syncItem->name = substr($cachedOfferLine->article_description, 0, 64)
+                              . (strlen($cachedOfferLine->article_description) > 64 ? '...' : '');
             $syncItem->part_number = $cachedOfferLine->article_code;
             $syncItem->item_description = $cachedOfferLine->article_description;
             $syncItem->pricelist_number_c = $cachedOfferLine->price_list_number;
@@ -278,43 +278,6 @@ class OfferData extends Sync implements SyncInterface {
 
             $syncItem->product_total_price = $this->fixCurrency($calc['product_total_price']);
             $syncItem->product_total_price_usdollar = $this->fixCurrency($calc['product_total_price']);
-
-
-            /*
-            $quantity = (float) $cachedOfferLine->quantity;
-            $net_total = !empty($cachedOfferLine->net_total) ? (float) $cachedOfferLine->net_total : 0;
-            $net_total_l42 = !empty($cachedOfferLine->net_total_listino_42) ? (float) $cachedOfferLine->net_total_listino_42 : 0;
-            $discount_total = $net_total_l42 - $net_total;
-            $tax_multiplier = (in_array($cachedOfferLine->article_code, $product_codes_vat_10) ? 0.1 : 0.22);
-            $taxUnit = $net_total * $tax_multiplier;
-            $taxTotal = $taxUnit * $quantity;
-
-            $syncItem->product_qty = $this->fixCurrency($quantity);
-
-            //Costo - it is on product - Listino9998 - we don't have this here
-            $syncItem->product_cost_price = 0;
-            $syncItem->product_cost_price_usdollar = 0;
-
-            $syncItem->product_list_price = $this->fixCurrency($net_total_l42);
-            $syncItem->product_list_price_usdollar = $this->fixCurrency($net_total_l42);
-
-            $syncItem->discount = 'Amount';
-            $syncItem->product_discount = $this->fixCurrency($discount_total);
-            $syncItem->product_discount_usdollar = $this->fixCurrency($discount_total);
-            $syncItem->product_discount_amount = $this->fixCurrency(0 - $discount_total);
-            $syncItem->product_discount_amount_usdollar = $this->fixCurrency(0 - $discount_total);
-
-            $syncItem->product_unit_price = $this->fixCurrency($net_total);
-            $syncItem->product_unit_price_usdollar = $this->fixCurrency($net_total);
-
-            $syncItem->vat = $this->fixCurrency($tax_multiplier * 100);
-            $syncItem->vat_amt = $this->fixCurrency($taxTotal);
-            $syncItem->vat_amt_usdollar = $this->fixCurrency($taxTotal);
-
-            $syncItem->product_total_price = $this->fixCurrency($net_total + $taxTotal);
-            $syncItem->product_total_price_usdollar = $this->fixCurrency($net_total + $taxTotal);
-            */
-
 
             //add id to sync item for update
             $restOperation = "INSERT";
