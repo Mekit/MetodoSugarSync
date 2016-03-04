@@ -210,7 +210,10 @@ class ProductData extends Sync implements SyncInterface {
             unset($syncItem->description);
 
             $syncItem->cost = $this->fixCurrency($syncItem->cost);
+            $syncItem->cost_usdollar = $this->fixCurrency($syncItem->cost);
             $syncItem->price = $this->fixCurrency($syncItem->price);
+            $syncItem->price_usdollar = $this->fixCurrency($syncItem->price);
+
             $syncItem->price_lst_9997_c = $this->fixCurrency($syncItem->price_lst_9997_c);
             $syncItem->price_lst_10000_c = $this->fixCurrency($syncItem->price_lst_10000_c);
             $syncItem->sold_last_120_days_c = $this->fixCurrency($syncItem->sold_last_120_days_c);
@@ -225,7 +228,7 @@ class ProductData extends Sync implements SyncInterface {
 
             try {
                 $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-                $this->log("REMOTE RESULT: " . json_encode($result));
+                $this->log("PRODUCT UPDATE RESULT: " . json_encode($result));
             } catch(SugarCrmRestException $e) {
                 //go ahead with false silently
                 $this->log("REMOTE ERROR!!! - " . $e->getMessage());
