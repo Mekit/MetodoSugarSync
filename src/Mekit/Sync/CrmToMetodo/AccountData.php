@@ -279,6 +279,16 @@ class AccountData extends Sync implements SyncInterface {
         return $answer;
     }
 
+    /*
+     * INSERT INTO [IMP].[dbo].[ANAGRAFICACF] (
+     * TIPOCONTO,CODCONTO,DSCCONTO1,INDIRIZZO,CAP,LOCALITA,PROVINCIA,TELEFONO,
+     * FAX,TELEX,CODFISCALE,PARTITAIVA,NOTE,INDIRIZZOINTERNET,CODMASTRO,CODNAZIONE,
+     * CODICEISO,CODLINGUA,UTENTEMODIFICA,DATAMODIFICA,DSCCONTO2
+     * ) VALUES('C', 'C  4315', 'LA PECORANERA SRL SEMPLIFICATA', 'VIA VOLPIANO 48', '10040', 'Leini&#039;', 'TO', '0115502224',
+     *  '',
+     * 'info@lapecoranerafood.com', '11160570013', '11160570013', '', 'http://', '1070', '', 'IT', '', 'CrmSync', '2016-03-10 12:34:10', 'ANAGRAFICA INCOMPLETA'); [] []
+     * */
+
     /**
      * @param \stdClass $remoteItem
      * @param array     $operation
@@ -395,7 +405,13 @@ class AccountData extends Sync implements SyncInterface {
                     $answer .= "'" . $columnValueNorm . "'";
                 }
                 */
-                $answer .= "'" . $columnValueNorm . "'";
+                if ($columnName == 'CODMASTRO') {
+                    $answer .= $columnValueNorm;
+                }
+                else {
+                    $answer .= "'" . $columnValueNorm . "'";
+                }
+
 
                 $answer .= ($columnIndex < $maxColumns ? ", " : "");
                 $columnIndex++;
@@ -416,7 +432,14 @@ class AccountData extends Sync implements SyncInterface {
                     $answer .= "'" . $columnValueNorm . "'";
                 }
                 */
-                $answer .= "'" . $columnValueNorm . "'";
+
+                if ($columnName == 'CODMASTRO') {
+                    $answer .= $columnValueNorm;
+                }
+                else {
+                    $answer .= "'" . $columnValueNorm . "'";
+                }
+
                 $answer .= ($columnIndex < $maxColumns ? ", " : "");
                 $columnIndex++;
             }
