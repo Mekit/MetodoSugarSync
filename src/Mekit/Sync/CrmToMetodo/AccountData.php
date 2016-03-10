@@ -473,9 +473,12 @@ class AccountData extends Sync implements SyncInterface {
      */
     protected function cleanupSqlFieldValue($value) {
         $value = str_replace("'", "`", $value);
+        /*
+         * THIS REMOVES 0!!! - no good
         if (empty($value)) {
             $value = '';
         }
+        */
         return $value;
     }
 
