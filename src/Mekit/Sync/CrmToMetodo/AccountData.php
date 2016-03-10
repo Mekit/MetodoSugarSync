@@ -443,7 +443,7 @@ class AccountData extends Sync implements SyncInterface {
     protected function cleanupSqlFieldValue($value) {
         $value = str_replace("'", "`", $value);
         if (empty($value)) {
-            $value = NULL;
+            $value = '';
         }
         return $value;
     }
