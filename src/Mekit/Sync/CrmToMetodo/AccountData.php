@@ -300,7 +300,7 @@ class AccountData extends Sync implements SyncInterface {
         $tableData = [
             'TIPOCONTO' => $operation['prefix'],
             'CODCONTO' => $operation['CODCONTO'],
-            'DSCCONTO1' => $remoteItem->name,
+            'DSCCONTO1' => substr($remoteItem->name, 0, 80),//this is max size in Metodo
             'INDIRIZZO' => $remoteItem->billing_address_street,
             'CAP' => $remoteItem->billing_address_postalcode,
             'LOCALITA' => $remoteItem->billing_address_city,
@@ -377,12 +377,18 @@ class AccountData extends Sync implements SyncInterface {
             $answer .= " VALUES(";
             foreach ($tableData as $columnName => $columnValue) {
                 $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
+                /*
+                 * This breaks 'vat id' like '012345' => 12345
+                 * the check should test if strlen($data) == strlen((string)intval($data))
                 if (is_numeric($columnValueNorm)) {
                     $answer .= $columnValueNorm;
                 }
                 else {
                     $answer .= "'" . $columnValueNorm . "'";
                 }
+                */
+                $answer .= "'" . $columnValueNorm . "'";
+
                 $answer .= ($columnIndex < $maxColumns ? ", " : "");
                 $columnIndex++;
             }
@@ -393,12 +399,16 @@ class AccountData extends Sync implements SyncInterface {
             foreach ($tableData as $columnName => $columnValue) {
                 $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
                 $answer .= $columnName . " = ";
+                /*
+                 * ...as above...
                 if (is_numeric($columnValueNorm)) {
                     $answer .= $columnValueNorm;
                 }
                 else {
                     $answer .= "'" . $columnValueNorm . "'";
                 }
+                */
+                $answer .= "'" . $columnValueNorm . "'";
                 $answer .= ($columnIndex < $maxColumns ? ", " : "");
                 $columnIndex++;
             }
@@ -408,12 +418,16 @@ class AccountData extends Sync implements SyncInterface {
                 foreach ($whereColumns as $columnName => $columnValue) {
                     $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
                     $answer .= $columnName . " = ";
+                    /*
+                     * ...as above...
                     if (is_numeric($columnValueNorm)) {
                         $answer .= $columnValueNorm;
                     }
                     else {
                         $answer .= "'" . $columnValueNorm . "'";
                     }
+                    */
+                    $answer .= "'" . $columnValueNorm . "'";
                     $answer .= ($whereColumnIndex < $whereMaxColumns ? " AND " : "");
                     $whereColumnIndex++;
                 }
