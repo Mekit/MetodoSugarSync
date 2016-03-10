@@ -250,6 +250,14 @@ class AccountData extends Sync implements SyncInterface {
         }
 
         if ($operation['sqlCommand'] == 'INSERT') {
+            /*
+             * Su CRM creiamo aziende dove il cliente di fatturazione('CODCONTOFATT') corrisponde SEMPRE
+             * al codice cliente $operation['CODCONTO']
+             * We set this data only when creating
+             *
+             */
+            $tableData['CODCONTOFATT'] = $tableData['CODCONTO'];
+
             $answer = $this->getInsertUpdateSql(
                 'INSERT',
                 $operation['database'], $tableName, $tableData
