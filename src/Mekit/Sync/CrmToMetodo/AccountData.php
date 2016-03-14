@@ -234,7 +234,7 @@ class AccountData extends Sync implements SyncInterface {
             'CODCONTO' => $operation['CODCONTO'],
             'ESERCIZIO' => $now->format("Y"),
             'CODCAMBIO' => '1',
-            'CODZONA' => $remoteItem->zone_c,
+            'CODZONA' => ($remoteItem->zone_c ? $remoteItem->zone_c : 0),
             //
             'UTENTEMODIFICA' => $this->METODO_UTENTEMODIFICA,
             'DATAMODIFICA' => $now->format("Y-m-d H:i:s"),
@@ -242,11 +242,11 @@ class AccountData extends Sync implements SyncInterface {
 
         if ($operation['database'] == "IMP") {
             $tableData['CODAGENTE1'] = $this->fixMetodoCode($remoteItem->imp_agent_code_c, ['A']);
-            $tableData['CODSETTORE'] = $remoteItem->industry;
+            $tableData['CODSETTORE'] = ($remoteItem->industry ? $remoteItem->industry : 0);
         }
         if ($operation['database'] == "MEKIT") {
             $tableData['CODAGENTE1'] = $this->fixMetodoCode($remoteItem->mekit_agent_code_c, ['A']);
-            $tableData['CODSETTORE'] = $remoteItem->mekit_industry_c;
+            $tableData['CODSETTORE'] = ($remoteItem->mekit_industry_c ? $remoteItem->mekit_industry_c : 0);
         }
 
         if ($operation['sqlCommand'] == 'INSERT') {
