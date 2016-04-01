@@ -204,6 +204,7 @@ class SugarCrmRest {
                 );
             }
             else if ($info['content_type'] != 'application/json; charset=UTF-8') {
+                echo "Response: " . $result . "\n";
                 throw new SugarCrmRestException(
                     "Curl response content type error(" . $info["content_type"]
                     . ") is not 'application/json; charset=UTF-8'!", 101

@@ -17,7 +17,8 @@
       "symfony/console": "^2.6",
       "monolog/monolog": "^1.17",
       "symfony/process": "^3.0",
-      "mtdowling/cron-expression": "^1.0"
+      "mtdowling/cron-expression": "^1.0",
+      "league/csv": "^8.0"
     },
     "scripts": {
 
