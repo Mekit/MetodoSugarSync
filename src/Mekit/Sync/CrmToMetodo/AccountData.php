@@ -9,6 +9,7 @@ namespace Mekit\Sync\CrmToMetodo;
 
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
+use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
@@ -369,6 +370,7 @@ class AccountData extends Sync implements SyncInterface {
     }
 
     /**
+     *
      * @param string $operation
      * @param string $database
      * @param string $tableName
@@ -378,87 +380,68 @@ class AccountData extends Sync implements SyncInterface {
      */
     protected function getInsertUpdateSql($operation, $database, $tableName, $tableData, $whereColumns = NULL) {
         $answer = '';
+
         //CLEAN UP TABLE FROM EMPTY VALUES
         foreach ($tableData as $columnName => $columnValue) {
-            $columnValue = $this->cleanupSqlFieldValue($columnValue);
+            $columnValue = ConversionHelper::cleanupMSSQLFieldValue($columnValue);
             if (is_null($columnValue)) {
                 unset($tableData[$columnName]);
             }
         }
+
         //
         $columnIndex = 1;
         $columnNames = array_keys($tableData);
         $maxColumns = count($columnNames);
+
+        //HEAD
         if ($operation == 'INSERT') {
             $answer .= 'INSERT INTO [' . $database . '].[dbo].[' . $tableName . ']';
             $answer .= " (" . implode(",", $columnNames) . ")";
             $answer .= " VALUES(";
-            foreach ($tableData as $columnName => $columnValue) {
-                $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
-                /*
-                 * This breaks 'vat id' like '012345' => 12345
-                 * the check should test if strlen($data) == strlen((string)intval($data))
-                if (is_numeric($columnValueNorm)) {
-                    $answer .= $columnValueNorm;
-                }
-                else {
-                    $answer .= "'" . $columnValueNorm . "'";
-                }
-                */
-                if ($columnName == 'CODMASTRO') {
-                    $answer .= $columnValueNorm;
-                }
-                else {
-                    $answer .= "'" . $columnValueNorm . "'";
-                }
-
-
-                $answer .= ($columnIndex < $maxColumns ? ", " : "");
-                $columnIndex++;
-            }
-            $answer .= ");";
         }
         else if ($operation == 'UPDATE') {
             $answer .= 'UPDATE [' . $database . '].[dbo].[' . $tableName . '] SET ';
-            foreach ($tableData as $columnName => $columnValue) {
-                $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
+        }
+
+        //COLUMNS - DATA
+        foreach ($tableData as $columnName => $columnValue) {
+            $columnValueNorm = ConversionHelper::cleanupMSSQLFieldValue($columnValue);
+            $columnValueNorm = ConversionHelper::hexEncodeDataForMSSQL($columnValueNorm);
+
+            if ($operation == 'UPDATE') {
                 $answer .= $columnName . " = ";
-                /*
-                 * ...as above...
-                if (is_numeric($columnValueNorm)) {
-                    $answer .= $columnValueNorm;
-                }
-                else {
-                    $answer .= "'" . $columnValueNorm . "'";
-                }
-                */
-
-                if ($columnName == 'CODMASTRO') {
-                    $answer .= $columnValueNorm;
-                }
-                else {
-                    $answer .= "'" . $columnValueNorm . "'";
-                }
-
-                $answer .= ($columnIndex < $maxColumns ? ", " : "");
-                $columnIndex++;
             }
+            if (substr($columnValueNorm, 0, 2) == '0x') {
+                $answer .= $columnValueNorm;
+            }
+            else {
+                $answer .= "'" . $columnValueNorm . "'";
+            }
+
+            $answer .= ($columnIndex < $maxColumns ? ", " : "");
+            $columnIndex++;
+        }
+
+        //TAIL
+        if ($operation == 'INSERT') {
+            $answer .= ");";
+        }
+        else if ($operation == 'UPDATE') {
             if (($whereMaxColumns = count($whereColumns))) {
                 $whereColumnIndex = 1;
                 $answer .= " WHERE ";
                 foreach ($whereColumns as $columnName => $columnValue) {
-                    $columnValueNorm = $this->cleanupSqlFieldValue($columnValue);
+                    $columnValueNorm = ConversionHelper::cleanupMSSQLFieldValue($columnValue);
+                    $columnValueNorm = ConversionHelper::hexEncodeDataForMSSQL($columnValueNorm);
+
                     $answer .= $columnName . " = ";
-                    /*
-                     * ...as above...
-                    if (is_numeric($columnValueNorm)) {
+                    if (substr($columnValueNorm, 0, 2) == '0x') {
                         $answer .= $columnValueNorm;
                     }
                     else {
                         $answer .= "'" . $columnValueNorm . "'";
                     }
-                    */
-                    $answer .= "'" . $columnValueNorm . "'";
                     $answer .= ($whereColumnIndex < $whereMaxColumns ? " AND " : "");
                     $whereColumnIndex++;
                 }
@@ -466,22 +449,6 @@ class AccountData extends Sync implements SyncInterface {
         }
         return $answer;
     }
-
-    /**
-     * @param mixed $value
-     * @return mixed|null
-     */
-    protected function cleanupSqlFieldValue($value) {
-        $value = str_replace("'", "`", $value);
-        /*
-         * THIS REMOVES 0!!! - no good
-        if (empty($value)) {
-            $value = '';
-        }
-        */
-        return $value;
-    }
-
 
     /**
      * @param \stdClass $remoteItem

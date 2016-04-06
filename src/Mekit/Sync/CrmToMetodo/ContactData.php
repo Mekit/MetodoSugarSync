@@ -9,6 +9,7 @@ namespace Mekit\Sync\CrmToMetodo;
 
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
+use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
@@ -125,17 +126,17 @@ class ContactData extends Sync implements SyncInterface {
 
     /**
      * @param \stdClass $remoteItem
-     * @param array     $operation
+     * @param array     $operationData
      * @return string
      */
-    protected function getSaveSqlFor_AnagraficaContatti($remoteItem, $operation) {
+    protected function getSaveSqlFor_AnagraficaContatti($remoteItem, $operationData) {
         $answer = '';
         $tableName = 'AnagraficaContatti';
         $now = new \DateTime();
 
         //
         $tableData = [
-            'IdContatto' => $operation['CODCONTO'],
+            'IdContatto' => $operationData['CODCONTO'],
             'Titolo' => $remoteItem->salutation,
             'Nome' => $remoteItem->first_name,
             'Cognome' => $remoteItem->last_name,
@@ -150,35 +151,46 @@ class ContactData extends Sync implements SyncInterface {
             'DataModifica' => $now->format("Y-m-d H:i:s"),
         ];
 
+        $operation = $operationData['sqlCommand'];
+        $columnIndex = 1;
+        $columnNames = array_keys($tableData);
+        $maxColumns = count($columnNames);
 
-        if ($operation['sqlCommand'] == 'INSERT') {
-            $columnIndex = 1;
-            $columnNames = array_keys($tableData);
-            $maxColumns = count($columnNames);
+        //HEAD
+        if ($operation == 'INSERT') {
             $answer .= 'INSERT INTO [Crm2Metodo].[dbo].[' . $tableName . ']';
             $answer .= " (" . implode(",", $columnNames) . ")";
             $answer .= " VALUES(";
-            foreach ($tableData as $columnName => $columnValue) {
-                $columnValueNorm = str_replace("'", "`", $columnValue);
-                $answer .= "'" . $columnValueNorm . "'" . ($columnIndex < $maxColumns ? ", " : "");
-                $columnIndex++;
+        }
+        else if ($operation == 'UPDATE') {
+            $answer .= 'UPDATE [Crm2Metodo].[dbo].[' . $tableName . '] SET ';
+            unset($tableData['IdContatto']);
+        }
+
+        //COLUMNS - DATA
+        foreach ($tableData as $columnName => $columnValue) {
+            $columnValueNorm = ConversionHelper::cleanupMSSQLFieldValue($columnValue);
+            $columnValueNorm = ConversionHelper::hexEncodeDataForMSSQL($columnValueNorm);
+
+            if ($operation == 'UPDATE') {
+                $answer .= $columnName . " = ";
             }
+            if (substr($columnValueNorm, 0, 2) == '0x') {
+                $answer .= $columnValueNorm;
+            }
+            else {
+                $answer .= "'" . $columnValueNorm . "'";
+            }
+
+            $answer .= ($columnIndex < $maxColumns ? ", " : "");
+            $columnIndex++;
+        }
+
+        if ($operation == 'INSERT') {
             $answer .= ");";
         }
-        else {
-            unset($tableData['IdContatto']);
-            $columnIndex = 1;
-            $columnNames = array_keys($tableData);
-            $maxColumns = count($columnNames);
-            $answer .= 'UPDATE [Crm2Metodo].[dbo].[' . $tableName . ']';
-            $answer .= " SET ";
-            foreach ($tableData as $columnName => $columnValue) {
-                $columnValueNorm = str_replace("'", "`", $columnValue);
-                $answer .= $columnName . " = " . "'" . $columnValueNorm . "'" . ($columnIndex
-                                                                                 < $maxColumns ? ", " : "");
-                $columnIndex++;
-            }
-            $answer .= " WHERE IdContatto = " . "'" . $operation['CODCONTO'] . "';";
+        else if ($operation == 'UPDATE') {
+            $answer .= " WHERE IdContatto = " . "'" . $operationData['CODCONTO'] . "';";
         }
         return $answer;
     }
