@@ -359,6 +359,12 @@ class AccountData extends Sync implements SyncInterface {
             unset($tableData['CODNAZIONE']);
             unset($tableData['CODICEISO']);
             unset($tableData['CODLINGUA']);
+            /*
+             * NOT UPDATING PI/CF - it will need to be done from Metodo
+             */
+            unset($tableData['CODFISCALE']);
+            unset($tableData['PARTITAIVA']);
+            //
             $answer = $this->getInsertUpdateSql(
                 'UPDATE',
                 $operation['database'], $tableName, $tableData,
