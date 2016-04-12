@@ -152,6 +152,11 @@ class ContactData extends Sync implements SyncInterface {
         ];
 
         $operation = $operationData['sqlCommand'];
+
+        if ($operation == 'UPDATE') {
+            unset($tableData['IdContatto']);
+        }
+
         $columnIndex = 1;
         $columnNames = array_keys($tableData);
         $maxColumns = count($columnNames);
@@ -164,7 +169,6 @@ class ContactData extends Sync implements SyncInterface {
         }
         else if ($operation == 'UPDATE') {
             $answer .= 'UPDATE [Crm2Metodo].[dbo].[' . $tableName . '] SET ';
-            unset($tableData['IdContatto']);
         }
 
         //COLUMNS - DATA
