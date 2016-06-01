@@ -102,10 +102,12 @@ class AccountData extends Sync implements SyncInterface
     {
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
-      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-      //            if ($this->counters["remote"]["index"] >= 15) {
-      //                break;
-      //            }
+      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      /*
+      if ($this->counters["remote"]["index"] >= 15)
+      {
+        break;
+      }*/
     }
   }
 
@@ -243,13 +245,16 @@ class AccountData extends Sync implements SyncInterface
         'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
       ];
 
-      $this->log("CRM SYNC ITEM[$restOperation][$crm_id]:");
-      $this->log(json_encode($arguments));
+      $this->log("CRM SYNC ITEM[$restOperation][$crm_id]");
+      if ($restOperation == "INSERT")
+      {
+        $this->log(json_encode($arguments));
+      }
 
       try
       {
         $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-        $this->log("REMOTE RESULT: " . json_encode($result));
+        //$this->log("REMOTE RESULT: " . json_encode($result));
       } catch(SugarCrmRestException $e)
       {
         //go ahead with false silently
@@ -302,8 +307,6 @@ class AccountData extends Sync implements SyncInterface
     $codeFieldValue = $cacheItem->$codeFieldName;
     $arguments['query'] = "accounts_cstm." . $codeFieldName . " = '" . $codeFieldValue . "'";
 
-    //$this->log("IDENTIFYING CRMID BY: " . json_encode($arguments));
-
     /** @var \stdClass $result */
     $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
     //$this->log("RES: " . json_encode($result));
@@ -340,6 +343,11 @@ class AccountData extends Sync implements SyncInterface
     {
       throw new \Exception("No server response for Crm ID query!");
     }
+
+
+    $this->log("CRMID (${codeFieldName} = '${codeFieldValue}' ) - " . ($crm_id ? "FOUND" : "NOT FOUND"));
+
+
     return ($crm_id);
   }
 
@@ -617,6 +625,8 @@ class AccountData extends Sync implements SyncInterface
    * @param $cacheItem
    * @return array|bool
    * @throws \Exception
+   *
+   *
    */
   protected function getLocalItemPayload($cacheItem)
   {
@@ -640,6 +650,9 @@ class AccountData extends Sync implements SyncInterface
         //                    $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
         //                }
       }
+
+      //@todo: IMPORTANT - Se sia cliente che fornitore: NON caricare dati fatturato del fornitore!!!
+
       if (count($metodoCodes))
       {
         $sql = "SELECT
@@ -711,7 +724,7 @@ class AccountData extends Sync implements SyncInterface
         $item["last_updated_at"] = \DateTime::createFromFormat('Y-m-d H:i:s.u', $item["last_updated_at"]);
       }
 
-      //Sort by last_updated_at date ascending
+      //Sort by last_updated_at date ascending so that more recent is last element
       usort(
         $items, function ($item1, $item2)
       {
@@ -723,7 +736,7 @@ class AccountData extends Sync implements SyncInterface
       }
       );
 
-      //merge data into single data
+      //merge data into single array
       foreach ($items as &$item)
       {
         unset($item["last_updated_at"]);//no need for this anymore
@@ -746,6 +759,8 @@ class AccountData extends Sync implements SyncInterface
         $answer = array_merge($answer, $item);
       }
 
+      $answer = $this->doInvoiceDataAnalysis($answer);
+
       /*
       if (count($items) > 1) {
           $this->log("-------------------------------------------------------------------------------------------------");
@@ -753,6 +768,280 @@ class AccountData extends Sync implements SyncInterface
           $this->log("MERGE RESULT: " . json_encode($answer));
       }
       */
+    }
+    return $answer;
+  }
+
+
+  /**
+   * @param array $payload
+   * @return array
+   */
+  protected function doInvoiceDataAnalysis($payload)
+  {
+    //$this->log("INVOICE CALC PAYLOAD " . json_encode($payload));
+
+    $databases = ["IMP", "MEKIT"];
+    foreach ($databases as $database)
+    {
+      $this->log(str_repeat("-", 80) . $database);
+      /*
+       * 3 mesi - Periodo attuale
+       * -------------------------
+       * totale 3 mesi precedenti al mese corrente
+       */
+      $key = $database == "IMP" ? "ft_periodo_attuale_c" : "mkt_ft_periodo_attuale_c";
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3);
+      $value_periodo_attuale_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO ATTUALE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_attuale_3);
+      $payload[$key] = $value_periodo_attuale_3;
+
+      /*
+       * 3 mesi - Periodo mobile
+       * -------------------------
+       * totale 3 mesi precedenti al periodo attuale
+       */
+      $key = $database == "IMP" ? "ft_periodo_mobile_c" : "mkt_ft_periodo_mobile_c";
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 3);
+      $value_periodo_mobile_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO MOBILE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_3);
+      $payload[$key] = $value_periodo_mobile_3;
+
+      /*
+       * 3 mesi - Periodo anno - 1
+       * -------------------------
+       * totale 3 mesi precedenti al mese corrente dell'anno scorso
+       */
+      $key = $database == "IMP" ? "ft_anno_meno_uno_c" : "mkt_ft_anno_meno_uno_c";
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 12);
+      $value_periodo_anno_meno_uno_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO ANNO MENO UNO 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_anno_meno_uno_3);
+      $payload[$key] = $value_periodo_anno_meno_uno_3;
+
+      /*
+       * 3 mesi - Periodo Attuale / Periodo Mobile (%)
+       * -------------------------
+       * rapporto tra periodo attuale e periodo mobile
+       */
+      $key = $database == "IMP" ? "ft_perc_att_mob_c" : "mkt_ft_perc_att_mob_c";
+      $value_perc_att_mob = 0;
+      if ($value_periodo_mobile_3 != 0)
+      {
+        $value_perc_att_mob = 100 * ($value_periodo_attuale_3 - $value_periodo_mobile_3) / $value_periodo_mobile_3;
+      }
+      //$this->log("PERCENTUALE ATTUALE SU MOBILE 3 MESI($key): " . " = " . $value_perc_att_mob);
+      $payload[$key] = $value_perc_att_mob;
+
+      /*
+       * 3 mesi - Periodo Attuale / Periodo anno - 1 (%)
+       * -------------------------
+       * rapporto tra periodo attuale e periodo anno - 1
+       */
+      $key = $database == "IMP" ? "ft_perc_att_amu_c" : "mkt_ft_perc_att_amu_c";
+      $value_perc_att_amu = 0;
+      if ($value_periodo_anno_meno_uno_3 != 0)
+      {
+        $value_perc_att_amu = 100 * ($value_periodo_attuale_3 - $value_periodo_anno_meno_uno_3)
+                              / $value_periodo_anno_meno_uno_3;
+      }
+      //$this->log("PERCENTUALE ATTUALE SU ANNO-1 3 MESI($key): " . " = " . $value_perc_att_amu);
+      $payload[$key] = $value_perc_att_amu;
+
+
+      /*
+       * 12 mesi - Periodo mobile
+       * -------------------------
+       * totale 12 mesi precedenti al mese corrente
+       */
+      $key = $database == "IMP" ? "mesimobili12_c" : "mkt_mesimobili12_c";
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12);
+      $value_periodo_mobile_12 = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO MOBILE 12 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_12);
+      $payload[$key] = $value_periodo_mobile_12;
+
+      /*
+       * 12 mesi - Anno scorso
+       * -------------------------
+       * totale 12 mesi dell'anno scorso
+       */
+      $key = $database == "IMP" ? "ft_anno_meno_uno_completo_c" : "mkt_ft_anno_meno_uno_complet_c";
+      $fields = $this->getInvoiceDataFieldNamesLastYear($database);
+      $value_periodo_anno_meno_uno_12 = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO ANNO MENO UNO 12 MESI($key): " . json_encode($fields) . " = " . $value_periodo_anno_meno_uno_12);
+      $payload[$key] = $value_periodo_anno_meno_uno_12;
+
+      /*
+       * 12 mesi - Periodo Mobile / Periodo Anno Scorso (%)
+       * -------------------------
+       * rapporto tra periodo mobile e periodo anno-1
+       */
+      $key = $database == "IMP" ? "mesi12mobiliannom1_c" : "mkt_mesi12mobiliannom1_c";
+      $value_perc_mob_lastyr = 0;
+      if ($value_periodo_anno_meno_uno_12 != 0)
+      {
+        $value_perc_mob_lastyr = 100 * ($value_periodo_mobile_12 - $value_periodo_anno_meno_uno_12)
+                                 / $value_periodo_anno_meno_uno_12;
+      }
+      //$this->log("PERCENTUALE MOBILE SU ANNO SCORSO 12 MESI($key): " . " = " . $value_perc_mob_lastyr);
+      $payload[$key] = $value_perc_mob_lastyr;
+
+
+      /*
+       * ANNO IN CORSO - Da Gen. a oggi
+       * -------------------------
+       * totale mesi precedenti al mese corrente fino all'inizio dell'anno
+       */
+      $key = $database == "IMP" ? "dagenaoggi_c" : "mkt_dagenaoggi_c";
+      $fields = $this->getInvoiceDataFieldNamesFromBeginningOfYear($database, 0);
+      $value_anno_in_corso_mesi = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO ANNO IN CORSO($key): " . json_encode($fields) . " = " . $value_anno_in_corso_mesi);
+      $payload[$key] = $value_anno_in_corso_mesi;
+
+      /*
+       * ANNO SCORSO - Da Gen. a oggi
+       * -------------------------
+       * totale mesi precedenti al mese corrente fino all'inizio dell'anno scorso
+       */
+      $key = $database == "IMP" ? "stessoanno1_c" : "mkt_stessoanno1_c";
+      $fields = $this->getInvoiceDataFieldNamesFromBeginningOfYear($database, 12);
+      $value_anno_scorso_mesi = $this->getInvoiceDataFieldsSum($payload, $fields);
+      //$this->log("PERIODO ANNO SCORSO($key): " . json_encode($fields) . " = " . $value_anno_scorso_mesi);
+      $payload[$key] = $value_anno_scorso_mesi;
+
+      /*
+       * Rapporto - Anno in corso / Anno Scorso (%)
+       * -------------------------
+       * rapporto tra anno in corso e annno scorso (stesso periodo)
+       */
+      $key = $database == "IMP" ? "inizioannostesso1_c" : "mkt_inizioannostesso1_c";
+      $value_perc_curryr_lastyr = 0;
+      if ($value_anno_scorso_mesi != 0)
+      {
+        $value_perc_curryr_lastyr = 100 * ($value_anno_in_corso_mesi - $value_anno_scorso_mesi)
+                                    / $value_anno_scorso_mesi;
+      }
+      //$this->log("PERCENTUALE ANNO IN CORSO / ANNO SCORSO($key): " . " = " . $value_perc_curryr_lastyr);
+      $payload[$key] = $value_perc_curryr_lastyr;
+    }
+    return $payload;
+  }
+
+  /**
+   * @param array $payload
+   * @param array $fields
+   * @return float
+   */
+  protected function getInvoiceDataFieldsSum($payload, $fields)
+  {
+    $answer = 0;
+    foreach ($fields as $fieldName)
+    {
+      if (isset($payload[$fieldName]))
+      {
+        $answer += floatval($payload[$fieldName]);
+      }
+    }
+    return $answer;
+  }
+
+  /**
+   * Returns field names for the specified length startinf from (and excluding) current month
+   *
+   * INVOICE CALC PAYLOAD {
+   * "imp_fatturato_storico_c":"2598.6000",
+   *
+   * "imp_fatturato_thisyear_1_c":"0.0000",
+   * "imp_fatturato_thisyear_2_c":"0.0000",
+   * "imp_fatturato_thisyear_3_c":"0.0000",
+   * "imp_fatturato_thisyear_4_c":"0.0000",
+   * "imp_fatturato_thisyear_5_c":"0.0000",
+   * "imp_fatturato_thisyear_6_c":"0.0000",
+   * "imp_fatturato_thisyear_7_c":"0.0000",
+   * "imp_fatturato_thisyear_8_c":"0.0000",
+   * "imp_fatturato_thisyear_9_c":"0.0000",
+   * "imp_fatturato_thisyear_10_c":"0.0000",
+   * "imp_fatturato_thisyear_11_c":"0.0000",
+   * "imp_fatturato_thisyear_12_c":"0.0000",
+   *
+   * "imp_fatturato_lastyear_1_c":"0.0000",
+   * "imp_fatturato_lastyear_2_c":"0.0000",
+   * "imp_fatturato_lastyear_3_c":"0.0000",
+   * "imp_fatturato_lastyear_4_c":"0.0000",
+   * "imp_fatturato_lastyear_5_c":"0.0000",
+   * "imp_fatturato_lastyear_6_c":"0.0000",
+   * "imp_fatturato_lastyear_7_c":"0.0000",
+   * "imp_fatturato_lastyear_8_c":"0.0000",
+   * "imp_fatturato_lastyear_9_c":"0.0000",
+   * "imp_fatturato_lastyear_10_c":"0.0000",
+   * "imp_fatturato_lastyear_11_c":"0.0000",
+   * "imp_fatturato_lastyear_12_c":"0.0000"
+   * }
+   *
+   * @param string $database
+   * @param int    $length
+   * @param int    $offset
+   * @return array
+   */
+  protected function getInvoiceDataFieldNamesBackwards($database, $length, $offset = 0)
+  {
+    $answer = [];
+    $now = new \DateTime();
+    $currMonthNumber = (int) $now->format("n");
+    $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
+    $fieldPrefix = $dbPrefix . "_fatturato_";
+    for ($m = 1; $m <= $length; $m++)
+    {
+      $currentYearIndicator = "thisyear";
+      $monthNumber = $currMonthNumber - $offset - $m;
+      if ($monthNumber < 1)
+      {
+        $monthNumber += 12;
+        $currentYearIndicator = "lastyear";
+      }
+      $answer[] = $fieldPrefix . $currentYearIndicator . "_" . $monthNumber . "_c";
+    }
+    return $answer;
+  }
+
+  /**
+   * @param string $database
+   * @return array
+   */
+  protected function getInvoiceDataFieldNamesLastYear($database)
+  {
+    $answer = [];
+    $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
+    $fieldPrefix = $dbPrefix . "_fatturato_";
+    for ($monthNumber = 1; $monthNumber <= 12; $monthNumber++)
+    {
+      $currentYearIndicator = "lastyear";
+      $answer[] = $fieldPrefix . $currentYearIndicator . "_" . $monthNumber . "_c";
+    }
+    return $answer;
+  }
+
+  /**
+   * @param string $database
+   * @param int    $offset
+   * @return array
+   */
+  protected function getInvoiceDataFieldNamesFromBeginningOfYear($database, $offset = 0)
+  {
+    $answer = [];
+    $now = new \DateTime();
+    $currMonthNumber = (int) $now->format("n");
+    $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
+    $fieldPrefix = $dbPrefix . "_fatturato_";
+    for ($m = 1; $m < $currMonthNumber; $m++)
+    {
+      $currentYearIndicator = "thisyear";
+      $monthNumber = $m - $offset;
+      if ($monthNumber < 1)
+      {
+        $monthNumber += 12;
+        $currentYearIndicator = "lastyear";
+      }
+      $answer[] = $fieldPrefix . $currentYearIndicator . "_" . $monthNumber . "_c";
     }
     return $answer;
   }
