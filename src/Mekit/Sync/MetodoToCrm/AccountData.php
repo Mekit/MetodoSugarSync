@@ -784,7 +784,7 @@ class AccountData extends Sync implements SyncInterface
     $databases = ["IMP", "MEKIT"];
     foreach ($databases as $database)
     {
-      $this->log(str_repeat("-", 80) . $database);
+      //$this->log(str_repeat("-", 80) . $database);
       /*
        * 3 mesi - Periodo attuale
        * -------------------------
