@@ -199,7 +199,7 @@ class AccountData extends Sync implements SyncInterface
             unset($syncItem->$key);
           }
 
-          //DATI FATTURATO
+          //DATI FATTURATO - CHANGE PREFIX
           if (preg_match('#^(imp|mekit)_fatturato_#', $key, $m))
           {
             $dbPrefix = $m[1];
