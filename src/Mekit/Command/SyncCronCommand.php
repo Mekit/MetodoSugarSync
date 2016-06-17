@@ -79,6 +79,7 @@ class SyncCronCommand extends Command implements CommandInterface
     {
       if (!$process->isRunning())
       {
+        $process->stop();
         unset($this->executionList[$processName]);
         $this->log("Process Ended[" . $processName . "].");
         if (!$process->isSuccessful())
