@@ -98,17 +98,17 @@ class AccountData extends Sync implements SyncInterface
     $this->log("updating remote...");
     $this->cacheDb->resetItemWalker();
     $this->counters["remote"]["index"] = 0;
+
+    //$cacheItems = $this->cacheDb->loadItems(['imp_metodo_client_code_c' => 'C  1267']);
+    //foreach($cacheItems as $cacheItem) {
+
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC'))
     {
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
       $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
-      /*
-      if ($this->counters["remote"]["index"] >= 15)
-      {
-        break;
-      }*/
     }
+
   }
 
 
@@ -622,37 +622,147 @@ class AccountData extends Sync implements SyncInterface
   }
 
   /**
-   * @param $cacheItem
+   * @param \stdClass $cacheItem
    * @return array|bool
    * @throws \Exception
-   *
-   *
    */
   protected function getLocalItemPayload($cacheItem)
   {
     $answer = FALSE;
+
+    $headData = $this->getLocalItemPayloadHeadData($cacheItem);
+    //$this->log("HEAD DATA: " . json_encode($headData, JSON_PRETTY_PRINT));
+
+    $invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
+    //$this->log("INVOICE DATA: " . json_encode($invoiceData, JSON_PRETTY_PRINT));
+
+    if (is_array($headData))
+    {
+      $answer = $headData;
+      if (is_array($invoiceData))
+      {
+        $answer = array_merge($answer, $invoiceData);
+      }
+    }
+
+    //$this->log("PAYLOAD DATA: " . json_encode($answer, JSON_PRETTY_PRINT));
+    return $answer;
+  }
+
+  /**
+   * @param \stdClass $cacheItem
+   * @return array|bool
+   * @throws \Exception
+   */
+  protected function getLocalItemPayloadInvoiceData($cacheItem)
+  {
+    $answer = FALSE;
     $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
     $databases = ["IMP", "MEKIT"];
+    $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
     $items = [];
     foreach ($databases as $database)
     {
       $metodoCodes = [];
       foreach ($fieldNames as $fieldName)
-      {//imp_metodo_client_code_c
+      {
+        if (preg_match("#^" . strtolower($database) . "_metodo_client_code_c$#", $fieldName))
+        {
+          $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
+        }
+      }
+      if (count($metodoCodes))
+      {
+        $sql = "SELECT
+                    FTDATA.CodiceMetodo,
+                    FTDATA.F0 AS " . strtolower($database) . "_fatturato_storico_c,
+                    FTDATA.F1Anno AS " . strtolower($database) . "_fatturato_thisyear_1_c,
+                    FTDATA.F2Anno AS " . strtolower($database) . "_fatturato_thisyear_2_c,
+                    FTDATA.F3Anno AS " . strtolower($database) . "_fatturato_thisyear_3_c,
+                    FTDATA.F4Anno AS " . strtolower($database) . "_fatturato_thisyear_4_c,
+                    FTDATA.F5Anno AS " . strtolower($database) . "_fatturato_thisyear_5_c,
+                    FTDATA.F6Anno AS " . strtolower($database) . "_fatturato_thisyear_6_c,
+                    FTDATA.F7Anno AS " . strtolower($database) . "_fatturato_thisyear_7_c,
+                    FTDATA.F8Anno AS " . strtolower($database) . "_fatturato_thisyear_8_c,
+                    FTDATA.F9Anno AS " . strtolower($database) . "_fatturato_thisyear_9_c,
+                    FTDATA.F10Anno AS " . strtolower($database) . "_fatturato_thisyear_10_c,
+                    FTDATA.F11Anno AS " . strtolower($database) . "_fatturato_thisyear_11_c,
+                    FTDATA.F12Anno AS " . strtolower($database) . "_fatturato_thisyear_12_c,
+                    
+                    FTDATA.F1AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_1_c,
+                    FTDATA.F2AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_2_c,
+                    FTDATA.F3AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_3_c,
+                    FTDATA.F4AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_4_c,
+                    FTDATA.F5AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_5_c,
+                    FTDATA.F6AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_6_c,
+                    FTDATA.F7AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_7_c,
+                    FTDATA.F8AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_8_c,
+                    FTDATA.F9AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_9_c,
+                    FTDATA.F10AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_10_c,
+                    FTDATA.F11AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_11_c,
+                    FTDATA.F12AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_12_c
+                    
+                    FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA                    
+                    WHERE FTDATA.CodiceMetodo IN (" . implode(",", $metodoCodes) . ")
+                    ";
+        $statement = $db->prepare($sql);
+        $statement->execute();
+        $itemList = $statement->fetchAll(\PDO::FETCH_ASSOC);
+        if (count($itemList))
+        {
+          $items = array_merge($items, $itemList);
+        }
+      }
+    }
 
+    if (count($items))
+    {
+      $answer = [];
+
+      //sanitize items
+      foreach ($items as &$item)
+      {
+        foreach ($item as $itemKey => &$itemData)
+        {
+          $itemData = floatval(trim($itemData));
+        }
+      }
+
+      //merge to single item
+      foreach ($items as &$item)
+      {
+        $answer = array_merge($answer, $item);
+      }
+
+      $answer = $this->doInvoiceDataAnalysis($answer);
+    }
+
+    return $answer;
+  }
+
+
+  /**
+   * @param \stdClass $cacheItem
+   * @return array|bool
+   * @throws \Exception
+   */
+  protected function getLocalItemPayloadHeadData($cacheItem)
+  {
+    $answer = FALSE;
+    $db = Configuration::getDatabaseConnection("SERVER2K8");
+    $databases = ["IMP", "MEKIT"];
+    $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
+    $items = [];
+    foreach ($databases as $database)
+    {
+      $metodoCodes = [];
+      foreach ($fieldNames as $fieldName)
+      {
         if (preg_match("#^" . strtolower($database) . "_metodo_(client|supplier)_code_c$#", $fieldName))
         {
           $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
         }
-
-        //                if (preg_match("#^metodo_(client|supplier)_code_" . strtolower($database) . "_c$#", $fieldName)) {
-        //                    $metodoCodes[] = "'" . $cacheItem->$fieldName . "'";
-        //                }
       }
-
-      //@todo: IMPORTANT - Se sia cliente che fornitore: NON caricare dati fatturato del fornitore!!!
-
       if (count($metodoCodes))
       {
         $sql = "SELECT
@@ -669,42 +779,13 @@ class AccountData extends Sync implements SyncInterface
                     ACF.NOTE AS " . strtolower($database) . "_metodo_notes_c,
                     ACFR.CODAGENTE1 AS " . strtolower($database) . "_agent_code_c,
                     ACFR.CODZONA AS zone_c,
-                    ACFR.CODSETTORE AS " . strtolower($database) . "_settore,
-
-
-                    FTDATA.F0 AS " . strtolower($database) . "_fatturato_storico_c,
-                    FTDATA.F1Anno AS " . strtolower($database) . "_fatturato_thisyear_1_c,
-                    FTDATA.F2Anno AS " . strtolower($database) . "_fatturato_thisyear_2_c,
-                    FTDATA.F3Anno AS " . strtolower($database) . "_fatturato_thisyear_3_c,
-                    FTDATA.F4Anno AS " . strtolower($database) . "_fatturato_thisyear_4_c,
-                    FTDATA.F5Anno AS " . strtolower($database) . "_fatturato_thisyear_5_c,
-                    FTDATA.F6Anno AS " . strtolower($database) . "_fatturato_thisyear_6_c,
-                    FTDATA.F7Anno AS " . strtolower($database) . "_fatturato_thisyear_7_c,
-                    FTDATA.F8Anno AS " . strtolower($database) . "_fatturato_thisyear_8_c,
-                    FTDATA.F9Anno AS " . strtolower($database) . "_fatturato_thisyear_9_c,
-                    FTDATA.F10Anno AS " . strtolower($database) . "_fatturato_thisyear_10_c,
-                    FTDATA.F11Anno AS " . strtolower($database) . "_fatturato_thisyear_11_c,
-                    FTDATA.F12Anno AS " . strtolower($database) . "_fatturato_thisyear_12_c,
-                    FTDATA.F1AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_1_c,
-                    FTDATA.F2AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_2_c,
-                    FTDATA.F3AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_3_c,
-                    FTDATA.F4AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_4_c,
-                    FTDATA.F5AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_5_c,
-                    FTDATA.F6AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_6_c,
-                    FTDATA.F7AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_7_c,
-                    FTDATA.F8AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_8_c,
-                    FTDATA.F9AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_9_c,
-                    FTDATA.F10AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_10_c,
-                    FTDATA.F11AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_11_c,
-                    FTDATA.F12AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_12_c
-
-
+                    ACFR.CODSETTORE AS " . strtolower($database) . "_settore
                     FROM [$database].[dbo].[ANAGRAFICACF] AS ACF
                     INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO
                     AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
-                    LEFT JOIN [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA ON ACF.CODCONTO = FTDATA.CodiceMetodo
                     WHERE ACF.CODCONTO IN (" . implode(",", $metodoCodes) . ")
                     ";
+
         $statement = $db->prepare($sql);
         $statement->execute();
         $itemList = $statement->fetchAll(\PDO::FETCH_ASSOC);
@@ -718,28 +799,10 @@ class AccountData extends Sync implements SyncInterface
     if (count($items))
     {
       $answer = [];
-      //convert to date
+
+      //sanitize items
       foreach ($items as &$item)
       {
-        $item["last_updated_at"] = \DateTime::createFromFormat('Y-m-d H:i:s.u', $item["last_updated_at"]);
-      }
-
-      //Sort by last_updated_at date ascending so that more recent is last element
-      usort(
-        $items, function ($item1, $item2)
-      {
-        if ($item1['last_updated_at'] == $item2['last_updated_at'])
-        {
-          return 0;
-        }
-        return ($item1['last_updated_at'] > $item2['last_updated_at']) ? 1 : -1;
-      }
-      );
-
-      //merge data into single array
-      foreach ($items as &$item)
-      {
-        unset($item["last_updated_at"]);//no need for this anymore
         foreach ($item as $itemKey => &$itemData)
         {
           if (!empty(trim($itemData)))
@@ -756,22 +819,32 @@ class AccountData extends Sync implements SyncInterface
             unset($item[$itemKey]);
           }
         }
+        $item["last_updated_at"] = \DateTime::createFromFormat('Y-m-d H:i:s.u', $item["last_updated_at"]);
+        ksort($item);
+      }
+
+      //Sort by last_updated_at date ascending so that more recent is last element
+      usort(
+        $items, function ($item1, $item2)
+      {
+        if ($item1['last_updated_at'] == $item2['last_updated_at'])
+        {
+          return 0;
+        }
+        return ($item1['last_updated_at'] > $item2['last_updated_at']) ? 1 : -1;
+      }
+      );
+
+      //merge to single item
+      foreach ($items as &$item)
+      {
+        unset($item["last_updated_at"]);//no need for this anymore
         $answer = array_merge($answer, $item);
       }
-
-      $answer = $this->doInvoiceDataAnalysis($answer);
-
-      /*
-      if (count($items) > 1) {
-          $this->log("-------------------------------------------------------------------------------------------------");
-          $this->log("MERGED MULTIPLE PAYLOAD ITEMS(SORTED BY DATE): " . json_encode($items));
-          $this->log("MERGE RESULT: " . json_encode($answer));
-      }
-      */
     }
+
     return $answer;
   }
-
 
   /**
    * @param array $payload
