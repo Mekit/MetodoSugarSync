@@ -22,8 +22,14 @@ class OperationsEnumerator
   /** @var array */
   protected $tableMap = [];
 
+  /** @var  \PDO */
+  protected $db;
+
   /** @var  \PDOStatement */
   protected $localItemStatement;
+
+  /** @var int */
+  protected $maxIncrement = 10;
 
   /** @var int */
   protected $counter = 0;
@@ -35,6 +41,7 @@ class OperationsEnumerator
   public function __construct($logger)
   {
     $this->logger = $logger;
+    $this->db = Configuration::getDatabaseConnection("SERVER2K8");
   }
 
   /**
@@ -56,29 +63,54 @@ class OperationsEnumerator
       $this->log("OP[" . $this->counter . "]: " . json_encode($operationElement));
       $operator = $this->getOperatorInstanceForOperationElement($operationElement);
       $operator->sync();
+      $this->executeTaskOnOperationElement($operationElement, $operator->getTaskOnTrigger());
     }
   }
 
   /**
    * @param \stdClass $operationElement
-   * @return TriggeredOperationInterface
-   * @throws \Exception
+   * @param int       $task
    */
-  protected function getOperatorInstanceForOperationElement($operationElement)
+  protected function executeTaskOnOperationElement(\stdClass $operationElement, $task)
   {
-    if (!isset($operationElement->table_name) || empty($operationElement->table_name))
+    if ($task == TriggeredOperation::TR_OP_INCREMENT
+        && intval($operationElement->sync_attempt_count) >= $this->maxIncrement
+    )
     {
-      throw new \Exception("Column 'table_name' is missing Operation Element");
+      $task = TriggeredOperation::TR_OP_DELETE;
     }
-    $table_name = $operationElement->table_name;
-    if (!array_key_exists($table_name, $this->tableMap))
+
+    switch ($task)
     {
-      throw new \Exception("Table name($table_name) is not defined in table_map");
+      case TriggeredOperation::TR_OP_NOTHING:
+        $this->log("NO OPERATION TASK");
+        //we update sync_datetime anyways so that other operations get a chance to be executed
+        $sql = "UPDATE [Crm2Metodo].[dbo].[TriggeredOperations] SET sync_datetime = GETDATE()" . " WHERE id = "
+               . $operationElement->id;
+        break;
+      case TriggeredOperation::TR_OP_INCREMENT:
+        $this->log("INCREMENT TASK");
+        $sql = "UPDATE [Crm2Metodo].[dbo].[TriggeredOperations] SET sync_datetime = GETDATE(),"
+               . " sync_attempt_count = " . (intval($operationElement->sync_attempt_count) + 1) . " WHERE id = "
+               . $operationElement->id;
+        break;
+      case TriggeredOperation::TR_OP_DELETE:
+        $this->log("DELETE TASK");
+        $sql = "DELETE FROM [Crm2Metodo].[dbo].[TriggeredOperations]" . " WHERE id = " . $operationElement->id;
+        break;
     }
-    $tableMapItem = $this->tableMap[$table_name];
-    $reflection = new \ReflectionClass($tableMapItem["operation-class-name"]);
-    $operatorInstance = $reflection->newInstanceArgs([$this->logger, $operationElement]);
-    return $operatorInstance;
+    if (isset($sql))
+    {
+      $this->log("SQL: " . $sql);
+      try
+      {
+        $st = $this->db->prepare($sql);
+        $st->execute();
+      } catch(\Exception $e)
+      {
+        $this->log("SQL FAIL: " . $e->getMessage());
+      }
+    }
   }
 
   /**
@@ -89,7 +121,7 @@ class OperationsEnumerator
     if (!$this->localItemStatement)
     {
       $db = Configuration::getDatabaseConnection("SERVER2K8");
-      $sql = "SELECT * FROM [Crm2Metodo].[dbo].[TriggeredOperations] AS T ORDER BY T.operation_datetime DESC";
+      $sql = "SELECT * FROM [Crm2Metodo].[dbo].[TriggeredOperations] AS T ORDER BY T.sync_datetime ASC";
       $this->localItemStatement = $db->prepare($sql);
       $this->localItemStatement->execute();
     }
@@ -114,6 +146,28 @@ class OperationsEnumerator
       }
     }
     return $item;
+  }
+
+  /**
+   * @param \stdClass $operationElement
+   * @return TriggeredOperationInterface
+   * @throws \Exception
+   */
+  protected function getOperatorInstanceForOperationElement($operationElement)
+  {
+    if (!isset($operationElement->table_name) || empty($operationElement->table_name))
+    {
+      throw new \Exception("Column 'table_name' is missing Operation Element");
+    }
+    $table_name = $operationElement->table_name;
+    if (!array_key_exists($table_name, $this->tableMap))
+    {
+      throw new \Exception("Table name($table_name) is not defined in table_map");
+    }
+    $tableMapItem = $this->tableMap[$table_name];
+    $reflection = new \ReflectionClass($tableMapItem["operation-class-name"]);
+    $operatorInstance = $reflection->newInstanceArgs([$this->logger, $operationElement]);
+    return $operatorInstance;
   }
 
   /**

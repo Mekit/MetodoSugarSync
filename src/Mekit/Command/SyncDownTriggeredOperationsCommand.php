@@ -20,7 +20,7 @@ class SyncDownTriggeredOperationsCommand extends Command implements CommandInter
   const COMMAND_DESCRIPTION = 'Synchronize Triggered Operations Metodo -> CRM';
 
   /** @var array */
-  protected $databases = ['IMP', 'MEKIT'];
+  protected $databases = ['IMP', 'MEKIT', 'Crm2Metodo'];
 
   public function __construct()
   {
@@ -128,7 +128,10 @@ class SyncDownTriggeredOperationsCommand extends Command implements CommandInter
   protected function checkMSSQLTable($tableNameParts)
   {
     $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $sql = "SELECT * FROM INFORMATION_SCHEMA.TABLES
+
+    $informationSchemaTableName = $tableNameParts['catalog'] . '.INFORMATION_SCHEMA.TABLES';
+    
+    $sql = "SELECT * FROM " . $informationSchemaTableName . "
             WHERE
             TABLE_CATALOG LIKE :catalog
             AND

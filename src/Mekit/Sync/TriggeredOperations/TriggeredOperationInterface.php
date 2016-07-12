@@ -18,7 +18,12 @@ interface TriggeredOperationInterface
   public function __construct(callable $logger, \stdClass $operationElement);
 
   /**
-   * @return mixed
+   * @return bool
    */
   public function sync();
+
+  /**
+   * @return int
+   */
+  public function getTaskOnTrigger();
 }
