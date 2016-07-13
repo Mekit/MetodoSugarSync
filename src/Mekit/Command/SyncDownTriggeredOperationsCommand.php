@@ -40,9 +40,10 @@ class SyncDownTriggeredOperationsCommand extends Command implements CommandInter
           'config_file', InputArgument::REQUIRED, 'The yaml(.yml) configuration file inside the "' . $this->configDir
                                                   . '" subfolder.'
         ),
+        /*
         new InputOption(
           'dry', '', InputOption::VALUE_NONE, 'Show what would be done without actually executing anything'
-        ),
+        ),*/
       ]
     );
   }
@@ -130,7 +131,7 @@ class SyncDownTriggeredOperationsCommand extends Command implements CommandInter
     $db = Configuration::getDatabaseConnection("SERVER2K8");
 
     $informationSchemaTableName = $tableNameParts['catalog'] . '.INFORMATION_SCHEMA.TABLES';
-    
+
     $sql = "SELECT * FROM " . $informationSchemaTableName . "
             WHERE
             TABLE_CATALOG LIKE :catalog

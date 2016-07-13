@@ -47,7 +47,7 @@ class TriggeredOperation
   protected function getDataElement()
   {
     $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $sql = "SELECT *" . " FROM " . $this->operationElement->table_name . " WHERE "
+    $sql = "SELECT * FROM " . $this->operationElement->table_name . " WHERE "
            . $this->operationElement->identifier_column . " LIKE " . $this->operationElement->identifier_data;
     try
     {

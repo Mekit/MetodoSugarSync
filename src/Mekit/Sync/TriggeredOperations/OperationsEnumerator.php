@@ -49,9 +49,9 @@ class OperationsEnumerator
    */
   public function execute($options)
   {
-    $this->log("Executing with options: " . json_encode($options));
+    //$this->log("Executing with options: " . json_encode($options));
 
-    $FORCE_LIMIT = 1;
+    $FORCE_LIMIT = 999;
 
     while ($operationElement = $this->getNextOperationElement())
     {
@@ -65,6 +65,7 @@ class OperationsEnumerator
       $operator->sync();
       $this->executeTaskOnOperationElement($operationElement, $operator->getTaskOnTrigger());
     }
+    $this->log("Executed #" . $this->counter . " (FORCE_LIMIT=$FORCE_LIMIT)");
   }
 
   /**
@@ -77,31 +78,33 @@ class OperationsEnumerator
         && intval($operationElement->sync_attempt_count) >= $this->maxIncrement
     )
     {
+      $this->log("Operation has reached maximum(" . $this->maxIncrement . ") number of attempts! Setting to delete.");
       $task = TriggeredOperation::TR_OP_DELETE;
     }
 
+    $taskName = 'UNKNOWN';
     switch ($task)
     {
       case TriggeredOperation::TR_OP_NOTHING:
-        $this->log("NO OPERATION TASK");
+        $taskName = 'NOTHING';
         //we update sync_datetime anyways so that other operations get a chance to be executed
         $sql = "UPDATE [Crm2Metodo].[dbo].[TriggeredOperations] SET sync_datetime = GETDATE()" . " WHERE id = "
                . $operationElement->id;
         break;
       case TriggeredOperation::TR_OP_INCREMENT:
-        $this->log("INCREMENT TASK");
+        $taskName = 'INCREMENT';
         $sql = "UPDATE [Crm2Metodo].[dbo].[TriggeredOperations] SET sync_datetime = GETDATE(),"
                . " sync_attempt_count = " . (intval($operationElement->sync_attempt_count) + 1) . " WHERE id = "
                . $operationElement->id;
         break;
       case TriggeredOperation::TR_OP_DELETE:
-        $this->log("DELETE TASK");
+        $taskName = 'DELETE';
         $sql = "DELETE FROM [Crm2Metodo].[dbo].[TriggeredOperations]" . " WHERE id = " . $operationElement->id;
         break;
     }
     if (isset($sql))
     {
-      $this->log("SQL: " . $sql);
+      $this->log("Element Operation[$taskName]: " . $sql);
       try
       {
         $st = $this->db->prepare($sql);

@@ -7,15 +7,24 @@
 
 namespace Mekit\Sync\TriggeredOperations\Operators;
 
+use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\TriggeredOperations\TriggeredOperation;
 use Mekit\Sync\TriggeredOperations\TriggeredOperationInterface;
 
+/**
+ * This class for now is specific to RAS type documents - if you need other types
+ * you will need to find a way to have type based classes
+ *
+ * Class Document
+ * @package Mekit\Sync\TriggeredOperations\Operators
+ */
 class Document extends TriggeredOperation implements TriggeredOperationInterface
 {
   /** @var  string */
   protected $logPrefix = 'Document';
 
+  /** @var array */
   protected $handledDocTypes = ['RAS'];
 
   /**
@@ -24,7 +33,18 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   public function sync()
   {
     $result = FALSE;
-    $dataElement = $this->getDataElement();
+
+    if ($this->operationElement->operation_type == "D")
+    {
+      //data element has already been deleted - we only need identifier and document type
+      $dataElement = new \stdClass();
+      $dataElement->PROGRESSIVO = $this->operationElement->identifier_data;
+      $dataElement->TIPODOC = $this->operationElement->param1;
+    }
+    else
+    {
+      $dataElement = $this->getDataElement();
+    }
 
     if (!$dataElement)
     {
@@ -38,22 +58,15 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
       return $result;
     }
 
-    if ($this->operationElement->operation_type == "D")
-    {
-      $result = $this->crmDeleteItem($dataElement);
-    }
-    else if (in_array($this->operationElement->operation_type, ['C', 'U']))
-    {
-      $result = $this->crmUpdateItem($dataElement);
-    }
+    $result = $this->crmUpdateItem($dataElement);
 
     if ($result)
     {
-      //$this->setTaskOnTrigger(TriggeredOperation::TR_OP_DELETE);
+      $this->setTaskOnTrigger(TriggeredOperation::TR_OP_DELETE);
     }
     else
     {
-      //$this->setTaskOnTrigger(TriggeredOperation::TR_OP_INCREMENT);
+      $this->setTaskOnTrigger(TriggeredOperation::TR_OP_INCREMENT);
     }
 
 
@@ -68,37 +81,49 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   {
     $answer = FALSE;
 
-    $dataElement = $this->updateCrmDataOnDataElement($dataElement);
-    print_r($dataElement);
+    if ($this->operationElement->operation_type != "D")
+    {
+      $dataElement = $this->updateCrmDataOnDataElement($dataElement);
+      $syncItem = $dataElement->crmData;
+    }
+    else
+    {
+      $syncItem = new \stdClass();
+      $syncItem->deleted = 1;
+    }
 
-    $syncItem = $dataElement->crmData;
+    try
+    {
+      $syncItem->id = $this->crmLoadRemoteCaseId($dataElement->PROGRESSIVO);
+    } catch(\Exception $e)
+    {
+      $this->log($e->getMessage());
+      $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
+      return $answer;
+    }
+
+    if (isset($syncItem->deleted) && $syncItem->deleted == 1 && !$syncItem->id)
+    {
+      $this->log("CANNOT DELETE ITEM WITHOUT ID - DELETE WILL BE SKIPPED");
+      return $answer;
+    }
 
     $arguments = [
       'module_name' => 'Cases',
       'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
     ];
 
+    $this->log("SYNC: " . print_r($syncItem, TRUE));
+
     try
     {
       $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-      $this->log("REMOTE RESULT: " . json_encode($result));
-
+      $this->log("REMOTE UPDATE RESULT: " . json_encode($result));
       $answer = TRUE;
     } catch(SugarCrmRestException $e)
     {
       //fail silently - we will do it next time
     }
-
-    return $answer;
-  }
-
-  /**
-   * @param \stdClass $dataElement
-   * @return bool
-   */
-  protected function crmDeleteItem($dataElement)
-  {
-    $answer = FALSE;
 
     return $answer;
   }
@@ -111,17 +136,13 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   {
     $crmData = new \stdClass();
 
-    $existingCaseId = $this->crmLoadRemoteCaseId($dataElement->PROGRESSIVO);
-
-    $relatedAccount = $this->crmLoadRelatedAccount($dataElement->CODCLIFOR);
+    $relatedAccountId = $this->crmLoadRelatedAccountId($dataElement->CODCLIFOR);
+    $relatedDocumentLines = $this->metodoLoadRelatedDocumentLines($dataElement->PROGRESSIVO);
 
     $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $dataElement->DATADOC);
     $closeDataDoc = $dataDoc->add(new \DateInterval('P7D'))->format('Y-m-d');
 
-    $crmData->id = $existingCaseId;
-
-    $crmData->name = 'RAS #' . $dataElement->NUMERODOC . '/' . $dataElement->ESERCIZIO . ' - '
-                     . $relatedAccount['name'];
+    $crmData->name = 'RAS #' . $dataElement->NUMERODOC . '/' . $dataElement->ESERCIZIO;
 
     $crmData->type = 4;//Assistenza Tecnica
 
@@ -131,19 +152,49 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
 
     $crmData->priority = 'P4';//Bassa
 
-    $crmData->account_id = $relatedAccount['id'];
+    if ($relatedAccountId)
+    {
+      $crmData->account_id = $relatedAccountId;
+    }
 
     $crmData->area_dinteresse_imp_c = 'service';//service = Assistenza
 
-    //@todo: usare: [CODAGENTE1]
     $crmData->assigned_user_id = 'bbe923ec-d288-b3a3-5b0c-5370bd2b9e40';//Chiara Aragno
 
     $crmData->date_close_prg_c = $closeDataDoc;
 
     $crmData->imp_ras_number_c = $dataElement->NUMERODOC . '/' . $dataElement->ESERCIZIO;
 
-    //@todo: prendere righe doc
-    $crmData->n_matricola_macchinario_c = '';
+
+    $description = [];
+    if ($relatedDocumentLines && count($relatedDocumentLines))
+    {
+
+      foreach ($relatedDocumentLines as $relatedDocumentLine)
+      {
+        if (!isset($crmData->ref_part_number_c) && $relatedDocumentLine->CODART)
+        {
+          $crmData->ref_part_number_c = $relatedDocumentLine->CODART;
+        }
+        if (!isset($crmData->ref_part_description_c) && $relatedDocumentLine->DESCRIZIONEART)
+        {
+          $crmData->ref_part_description_c = $relatedDocumentLine->DESCRIZIONEART;
+        }
+        if (!isset($crmData->ref_part_unique_number_c) && $relatedDocumentLine->NRRIFPARTITA)
+        {
+          $crmData->ref_part_unique_number_c = $relatedDocumentLine->NRRIFPARTITA;
+        }
+        if ($relatedDocumentLine->DESCRIZIONEART)
+        {
+          $description[] = $relatedDocumentLine->DESCRIZIONEART;
+        }
+      }
+    }
+    //
+    if (count($description))
+    {
+      $crmData->descrizione_problematica_c = implode("\n", $description);
+    }
 
     $crmData->imp_doc_progressivo_c = $dataElement->PROGRESSIVO;
 
@@ -187,21 +238,19 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
 
   /**
    * @param string $CODCLIFOR
-   * @return array
+   * @return string
    * @throws SugarCrmRestException
    */
-  protected function crmLoadRelatedAccount($CODCLIFOR)
+  protected function crmLoadRelatedAccountId($CODCLIFOR)
   {
-    $answer = [
-      'id' => FALSE,
-      'name' => $CODCLIFOR,
-    ];
+    $crm_id = FALSE;
+
     $arguments = [
       'module_name' => 'Accounts',
       'query' => "",
       'order_by' => "",
       'offset' => 0,
-      'select_fields' => ['id', 'name'],
+      'select_fields' => ['id'],
       'link_name_to_fields_array' => [],
       'max_results' => 2,
       'deleted' => FALSE,
@@ -238,12 +287,32 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
       {
         /** @var \stdClass $remoteItem */
         $remoteItem = $result->entry_list[0]->name_value_list;
-        $this->log("FOUND REMOTE ITEM: " . json_encode($remoteItem));
-        $answer['id'] = $remoteItem->id->value;
-        $answer['name'] = $remoteItem->name->value;
+        //$this->log("FOUND REMOTE ACCOUNT: " . json_encode($remoteItem));
+        $crm_id = $remoteItem->id->value;
       }
     }
 
+    return $crm_id;
+  }
+
+  /**
+   * @param string $PROGRESSIVO
+   * @return bool|array
+   */
+  protected function metodoLoadRelatedDocumentLines($PROGRESSIVO)
+  {
+    $db = Configuration::getDatabaseConnection("SERVER2K8");
+    $sql = "SELECT TIPORIGA, CODART, DESCRIZIONEART, NRRIFPARTITA FROM IMP.dbo.RIGHEDOCUMENTI WHERE" . " IDTESTA = "
+           . $PROGRESSIVO . " ORDER BY POSIZIONE";
+    try
+    {
+      $st = $db->prepare($sql);
+      $st->execute();
+      $answer = $st->fetchAll(\PDO::FETCH_OBJ);
+    } catch(\Exception $e)
+    {
+      $answer = FALSE;
+    }
     return $answer;
   }
 }

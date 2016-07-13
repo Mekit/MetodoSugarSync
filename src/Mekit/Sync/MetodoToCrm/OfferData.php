@@ -676,7 +676,7 @@ class OfferData extends Sync implements SyncInterface {
 
                     $syncItem->name = 'Opp. su ' . $cacheItem->database_metodo . ' - ' . $dataDoc->format("Y") . ' - '
                                       . $cacheItem->document_number;
-                    $syncItem->date_closed = $dataDoc->add(new \DateInterval('P15D'))->format('Y-m-d');
+                  $syncItem->date_closed = $dataDoc->add(new \DateInterval('P10D'))->format('Y-m-d');
                     $syncItem->statovendita_c = '2';//Offerta
                     $syncItem->amount = $this->fixCurrency($cacheItem->tot_imponibile_euro);
                     $syncItem->amount_usdollar = $this->fixCurrency($cacheItem->tot_imponibile_euro);
