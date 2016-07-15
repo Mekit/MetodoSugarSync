@@ -137,12 +137,17 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
     $crmData = new \stdClass();
 
     $relatedAccountId = $this->crmLoadRelatedAccountId($dataElement->CODCLIFOR);
+
+    $relatedAccountData = $this->crmLoadRelatedAccountData($relatedAccountId);
+    //$this->log("ACCOUNT DATA($relatedAccountId): " . json_encode($relatedAccountData));
+
     $relatedDocumentLines = $this->metodoLoadRelatedDocumentLines($dataElement->PROGRESSIVO);
+
 
     $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $dataElement->DATADOC);
     $closeDataDoc = $dataDoc->add(new \DateInterval('P7D'))->format('Y-m-d');
 
-    $crmData->name = 'RAS #' . $dataElement->NUMERODOC . '/' . $dataElement->ESERCIZIO;
+    $crmData->name = 'RAS ' . $dataElement->ESERCIZIO . '/' . $dataElement->NUMERODOC;
 
     $crmData->type = 4;//Assistenza Tecnica
 
@@ -157,13 +162,18 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
       $crmData->account_id = $relatedAccountId;
     }
 
+    if (isset($relatedAccountData["shipping_address_city"]))
+    {
+      $crmData->jjwg_maps_address_c = $relatedAccountData["shipping_address_city"];
+    }
+
     $crmData->area_dinteresse_imp_c = 'service';//service = Assistenza
 
     $crmData->assigned_user_id = 'bbe923ec-d288-b3a3-5b0c-5370bd2b9e40';//Chiara Aragno
 
     $crmData->date_close_prg_c = $closeDataDoc;
 
-    $crmData->imp_ras_number_c = $dataElement->NUMERODOC . '/' . $dataElement->ESERCIZIO;
+    $crmData->imp_ras_number_c = $dataElement->ESERCIZIO . '/' . $dataElement->NUMERODOC;
 
 
     $description = [];
@@ -175,14 +185,19 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
         if (!isset($crmData->ref_part_number_c) && $relatedDocumentLine->CODART)
         {
           $crmData->ref_part_number_c = $relatedDocumentLine->CODART;
+          if ($relatedDocumentLine->DESCRIZIONEART)
+          {
+            $crmData->ref_part_description_c = $relatedDocumentLine->DESCRIZIONEART;
+          }
+          if ($relatedDocumentLine->NRRIFPARTITA)
+          {
+            $crmData->ref_part_unique_number_c = $relatedDocumentLine->NRRIFPARTITA;
+          }
         }
-        if (!isset($crmData->ref_part_description_c) && $relatedDocumentLine->DESCRIZIONEART)
+        //RIFCOMMCLI
+        if (!isset($crmData->rif_commessa_code_c) && $relatedDocumentLine->RIFCOMMCLI)
         {
-          $crmData->ref_part_description_c = $relatedDocumentLine->DESCRIZIONEART;
-        }
-        if (!isset($crmData->ref_part_unique_number_c) && $relatedDocumentLine->NRRIFPARTITA)
-        {
-          $crmData->ref_part_unique_number_c = $relatedDocumentLine->NRRIFPARTITA;
+          $crmData->rif_commessa_code_c = $relatedDocumentLine->RIFCOMMCLI;
         }
         if ($relatedDocumentLine->DESCRIZIONEART)
         {
@@ -234,6 +249,50 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
     }
 
     return $crm_id;
+  }
+
+
+  protected function crmLoadRelatedAccountData($crmid)
+  {
+    $data = [];
+
+    if ($crmid)
+    {
+      $arguments = [
+        'module_name' => 'Accounts',
+        'id' => $crmid,
+        'select_fields' => ['id', 'shipping_address_city'],
+        'link_name_to_fields_array' => [],
+      ];
+
+      try
+      {
+        /** @var \stdClass $result */
+        $result = $this->sugarCrmRest->comunicate('get_entry', $arguments);
+      } catch(SugarCrmRestException $e)
+      {
+        //bugger
+      }
+
+
+      if (isset($result) && isset($result->entry_list) && count($result->entry_list) == 1)
+      {
+        //$this->log("ACCOUNT DATA RES: " . json_encode($result));
+        /** @var \stdClass $remoteItem */
+        $remoteItem = $result->entry_list[0]->name_value_list;
+        foreach ($arguments['select_fields'] as $fieldName)
+        {
+          if (isset($remoteItem->$fieldName->value))
+          {
+            $data[$fieldName] = $remoteItem->$fieldName->value;
+          }
+        }
+        //$this->log("FOUND REMOTE ACCOUNT: " . json_encode($remoteItem));
+        //$crm_id = $remoteItem->id->value;
+      }
+    }
+
+    return $data;
   }
 
   /**
@@ -302,7 +361,8 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   protected function metodoLoadRelatedDocumentLines($PROGRESSIVO)
   {
     $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $sql = "SELECT TIPORIGA, CODART, DESCRIZIONEART, NRRIFPARTITA FROM IMP.dbo.RIGHEDOCUMENTI WHERE" . " IDTESTA = "
+    $sql = "SELECT TIPORIGA, CODART, DESCRIZIONEART, NRRIFPARTITA, RIFCOMMCLI FROM IMP.dbo.RIGHEDOCUMENTI WHERE"
+           . " IDTESTA = "
            . $PROGRESSIVO . " ORDER BY POSIZIONE";
     try
     {
