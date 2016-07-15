@@ -149,8 +149,6 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
 
     $crmData->name = 'RAS ' . $dataElement->ESERCIZIO . '/' . $dataElement->NUMERODOC;
 
-    $crmData->type = 4;//Assistenza Tecnica
-
     $crmData->state = $dataElement->DOCCHIUSO == 1 ? 2 : 1;//1=Aperto / 2=Chiuso
 
     $crmData->status = $dataElement->DOCCHIUSO == 1 ? "2_1" : "1_1";//1_1=New / 2_2=Terminato
@@ -205,6 +203,16 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
         }
       }
     }
+
+    $crmData->type = 4;//4 = Assistenza Tecnica
+    if (isset($crmData->rif_commessa_code_c))
+    {
+      if (preg_match('#^CTR#', $crmData->rif_commessa_code_c))
+      {
+        $crmData->type = 5;//5 = Assitenza Programmata
+      }
+    }
+
     //
     if (count($description))
     {
