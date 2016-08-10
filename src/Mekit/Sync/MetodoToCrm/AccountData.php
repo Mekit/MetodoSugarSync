@@ -249,7 +249,7 @@ class AccountData extends Sync implements SyncInterface
         }
       }
 
-      if ($restOperation == "NONE")
+      if ($restOperation == "NONE" && $cacheItem->crm_export_flag_c == 1)
       {
         $this->log("NO REST OPERATION FOR THIS ITEM - UPDATE WILL BE SKIPPED");
         $this->log(json_encode($syncItem));
@@ -351,9 +351,7 @@ class AccountData extends Sync implements SyncInterface
       throw new \Exception("No server response for Crm ID query!");
     }
 
-
     $this->log("CRMID (${codeFieldName} = '${codeFieldValue}' ) - " . ($crm_id ? "FOUND" : "NOT FOUND"));
-
 
     return ($crm_id);
   }
