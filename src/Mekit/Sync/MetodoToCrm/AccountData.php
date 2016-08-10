@@ -1018,7 +1018,7 @@ class AccountData extends Sync implements SyncInterface
   }
 
   /**
-   * Returns field names for the specified length startinf from (and excluding) current month
+   * Returns field names for the specified length starting from (and excluding) current month
    *
    * INVOICE CALC PAYLOAD {
    * "imp_fatturato_storico_c":"2598.6000",
