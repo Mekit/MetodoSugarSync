@@ -171,90 +171,71 @@ class AccountData extends Sync implements SyncInterface
       unset($syncItem->crm_id);
       unset($syncItem->id);
 
-      if ($cacheItem->crm_export_flag_c == 1)
+      //add payload to syncItem
+      $payload = $this->getLocalItemPayload($cacheItem);
+      if ($payload)
       {
-        //add payload to syncItem
-        $payload = $this->getLocalItemPayload($cacheItem);
-        if ($payload)
+        foreach ($payload as $key => $payloadData)
         {
-          foreach ($payload as $key => $payloadData)
+          $syncItem->$key = $payloadData;
+
+          //SPECIAL CASES
+
+          //CODICE AGENTE (NO SPACES)
+          if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c']))
           {
-            $syncItem->$key = $payloadData;
+            $syncItem->$key = $this->fixMetodoCode($payloadData, ['A'], TRUE);
+          }
 
-            //SPECIAL CASES
+          //SETTORE IMP MEKIT  - CUSTOM FIELD NAMES
+          //in $payload strtolower($database) . "_settore,
+          if (in_array($key, ['imp_settore', 'mekit_settore']))
+          {
+            $customKey = ($key == 'imp_settore' ? 'industry' : 'mekit_industry_c');
+            $syncItem->$customKey = $payloadData;
+            unset($syncItem->$key);
+          }
 
-            //CODICE AGENTE (NO SPACES)
-            if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c']))
-            {
-              $syncItem->$key = $this->fixMetodoCode($payloadData, ['A'], TRUE);
+          //DATI FATTURATO - CHANGE PREFIX
+          if (preg_match('#^(imp|mekit)_fatturato_#', $key, $m))
+          {
+            $dbPrefix = $m[1];
+            $customKey = FALSE;
+            if ($dbPrefix == 'imp')
+            {//fields are called without db - so removing imp_
+              $customKey = str_replace('imp_', '', $key);
             }
-
-            //SETTORE IMP MEKIT  - CUSTOM FIELD NAMES
-            //in $payload strtolower($database) . "_settore,
-            if (in_array($key, ['imp_settore', 'mekit_settore']))
+            else if ($dbPrefix == 'mekit')
+            {//fields are called mkt_... (not mekit_...)
+              $customKey = str_replace('mekit_', 'mkt_', $key);
+            }
+            if ($customKey)
             {
-              $customKey = ($key == 'imp_settore' ? 'industry' : 'mekit_industry_c');
               $syncItem->$customKey = $payloadData;
               unset($syncItem->$key);
             }
-
-            //DATI FATTURATO - CHANGE PREFIX
-            if (preg_match('#^(imp|mekit)_fatturato_#', $key, $m))
-            {
-              $dbPrefix = $m[1];
-              $customKey = FALSE;
-              if ($dbPrefix == 'imp')
-              {//fields are called without db - so removing imp_
-                $customKey = str_replace('imp_', '', $key);
-              }
-              else if ($dbPrefix == 'mekit')
-              {//fields are called mkt_... (not mekit_...)
-                $customKey = str_replace('mekit_', 'mkt_', $key);
-              }
-              if ($customKey)
-              {
-                $syncItem->$customKey = $payloadData;
-                unset($syncItem->$key);
-              }
-            }
           }
         }
-
-        //rename VAT NUMBER
-        $syncItem->vat_number_c = $syncItem->partita_iva_c;
-        unset($syncItem->partita_iva_c);
-
-        //reformat date
-        $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
-
-        //additional data
-        $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
       }
 
-      $restOperation = "NONE";
+      //rename VAT NUMBER
+      $syncItem->vat_number_c = $syncItem->partita_iva_c;
+      unset($syncItem->partita_iva_c);
+
+      //reformat date
+      $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+
+      //additional data
+      $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
+
+
+      $restOperation = "INSERT";
       if ($crm_id)
       {
         $syncItem->id = $crm_id;
         $restOperation = "UPDATE";
-        if ($cacheItem->crm_export_flag_c == 0)
-        {
-          $syncItem->deleted = 1;
-        }
-      }
-      else
-      {
-        if ($cacheItem->crm_export_flag_c == 1)
-        {
-          $restOperation = "INSERT";
-        }
       }
 
-      if ($restOperation == "NONE" && $cacheItem->crm_export_flag_c == 1)
-      {
-        $this->log("NO REST OPERATION FOR THIS ITEM - UPDATE WILL BE SKIPPED");
-        $this->log(json_encode($syncItem));
-        return $result;
-      }
 
       //create arguments for rest
       $arguments = [
@@ -586,7 +567,7 @@ class AccountData extends Sync implements SyncInterface
 
     //add other data on item
 
-    //@todo: implement this
+    //@todo: this field can be deleted from crm: crm_export_flag_c
     $cacheUpdateItem->crm_export_flag_c = $localItem->CrmExportFlag;
     $cacheUpdateItem->name = $localItem->RagioneSociale;
 
@@ -1151,6 +1132,8 @@ class AccountData extends Sync implements SyncInterface
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                 LEFT JOIN [$database].dbo.EXTRACLIENTI AS EXTC ON ACF.CODCONTO = EXTC.CODCONTO
                 LEFT JOIN [$database].dbo.EXTRAFORNITORI AS EXTF ON ACF.CODCONTO = EXTF.CODCONTO
+                WHERE (EXTC.SOGCRM_Esportabile IS NOT NULL AND EXTC.SOGCRM_Esportabile = 1)
+                OR (EXTF.SOGCRM_Esportabile IS NOT NULL AND EXTF.SOGCRM_Esportabile = 1)
                 ORDER BY ACF.CODCONTO ASC
                 ";//ACF.DATAMODIFICA
 
