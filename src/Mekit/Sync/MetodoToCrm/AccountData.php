@@ -99,9 +99,6 @@ class AccountData extends Sync implements SyncInterface
     $this->cacheDb->resetItemWalker();
     $this->counters["remote"]["index"] = 0;
 
-    //$cacheItems = $this->cacheDb->loadItems(['imp_metodo_client_code_c' => 'C  1267']);
-    //foreach($cacheItems as $cacheItem) {
-
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC'))
     {
       $this->counters["remote"]["index"]++;
@@ -174,69 +171,89 @@ class AccountData extends Sync implements SyncInterface
       unset($syncItem->crm_id);
       unset($syncItem->id);
 
-      //add payload to syncItem
-      $payload = $this->getLocalItemPayload($cacheItem);
-      if ($payload)
+      if ($cacheItem->crm_export_flag_c == 1)
       {
-        foreach ($payload as $key => $payloadData)
+        //add payload to syncItem
+        $payload = $this->getLocalItemPayload($cacheItem);
+        if ($payload)
         {
-          $syncItem->$key = $payloadData;
-
-          //SPECIAL CASES
-
-          //CODICE AGENTE (NO SPACES)
-          if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c']))
+          foreach ($payload as $key => $payloadData)
           {
-            $syncItem->$key = $this->fixMetodoCode($payloadData, ['A'], TRUE);
-          }
+            $syncItem->$key = $payloadData;
 
-          //SETTORE IMP MEKIT  - CUSTOM FIELD NAMES
-          //in $payload strtolower($database) . "_settore,
-          if (in_array($key, ['imp_settore', 'mekit_settore']))
-          {
-            $customKey = ($key == 'imp_settore' ? 'industry' : 'mekit_industry_c');
-            $syncItem->$customKey = $payloadData;
-            unset($syncItem->$key);
-          }
+            //SPECIAL CASES
 
-          //DATI FATTURATO - CHANGE PREFIX
-          if (preg_match('#^(imp|mekit)_fatturato_#', $key, $m))
-          {
-            $dbPrefix = $m[1];
-            $customKey = FALSE;
-            if ($dbPrefix == 'imp')
-            {//fields are called without db - so removing imp_
-              $customKey = str_replace('imp_', '', $key);
-            }
-            else if ($dbPrefix == 'mekit')
-            {//fields are called mkt_... (not mekit_...)
-              $customKey = str_replace('mekit_', 'mkt_', $key);
-            }
-            if ($customKey)
+            //CODICE AGENTE (NO SPACES)
+            if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c']))
             {
+              $syncItem->$key = $this->fixMetodoCode($payloadData, ['A'], TRUE);
+            }
+
+            //SETTORE IMP MEKIT  - CUSTOM FIELD NAMES
+            //in $payload strtolower($database) . "_settore,
+            if (in_array($key, ['imp_settore', 'mekit_settore']))
+            {
+              $customKey = ($key == 'imp_settore' ? 'industry' : 'mekit_industry_c');
               $syncItem->$customKey = $payloadData;
               unset($syncItem->$key);
             }
+
+            //DATI FATTURATO - CHANGE PREFIX
+            if (preg_match('#^(imp|mekit)_fatturato_#', $key, $m))
+            {
+              $dbPrefix = $m[1];
+              $customKey = FALSE;
+              if ($dbPrefix == 'imp')
+              {//fields are called without db - so removing imp_
+                $customKey = str_replace('imp_', '', $key);
+              }
+              else if ($dbPrefix == 'mekit')
+              {//fields are called mkt_... (not mekit_...)
+                $customKey = str_replace('mekit_', 'mkt_', $key);
+              }
+              if ($customKey)
+              {
+                $syncItem->$customKey = $payloadData;
+                unset($syncItem->$key);
+              }
+            }
           }
         }
+
+        //rename VAT NUMBER
+        $syncItem->vat_number_c = $syncItem->partita_iva_c;
+        unset($syncItem->partita_iva_c);
+
+        //reformat date
+        $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+
+        //additional data
+        $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
       }
 
-      //rename VAT NUMBER
-      $syncItem->vat_number_c = $syncItem->partita_iva_c;
-      unset($syncItem->partita_iva_c);
-
-      //reformat date
-      $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
-
-      //additional data
-      $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
-
-      //add id to sync item for update
-      $restOperation = "INSERT";
+      $restOperation = "NONE";
       if ($crm_id)
       {
         $syncItem->id = $crm_id;
         $restOperation = "UPDATE";
+        if ($cacheItem->crm_export_flag_c == 0)
+        {
+          $syncItem->deleted = 1;
+        }
+      }
+      else
+      {
+        if ($cacheItem->crm_export_flag_c == 1)
+        {
+          $restOperation = "INSERT";
+        }
+      }
+
+      if ($restOperation == "NONE")
+      {
+        $this->log("NO REST OPERATION FOR THIS ITEM - UPDATE WILL BE SKIPPED");
+        $this->log(json_encode($syncItem));
+        return $result;
       }
 
       //create arguments for rest
@@ -246,10 +263,6 @@ class AccountData extends Sync implements SyncInterface
       ];
 
       $this->log("CRM SYNC ITEM[$restOperation][$crm_id]");
-      if ($restOperation == "INSERT")
-      {
-        $this->log(json_encode($arguments));
-      }
 
       try
       {
@@ -264,12 +277,6 @@ class AccountData extends Sync implements SyncInterface
         $result = new \stdClass();
         $result->updateFailure = TRUE;
       }
-    }
-    else
-    {
-      //$this->log("SKIPPING(ALREADY UP TO DATE): " . $cacheItem->name);
-      //$this->log("METODO LAST UPDATE: " . $metodoLastUpdate->format("c"));
-      //$this->log("CRM LAST UPDATE: " . $crmLastUpdate->format("c"));
     }
     return $result;
   }
