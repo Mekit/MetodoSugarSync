@@ -197,7 +197,8 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
         {
           $crmData->rif_commessa_code_c = $relatedDocumentLine->RIFCOMMCLI;
         }
-        if ($relatedDocumentLine->DESCRIZIONEART)
+        //AGGIU
+        if ($relatedDocumentLine->DESCRIZIONEART && !$relatedDocumentLine->CODART)
         {
           $description[] = $relatedDocumentLine->DESCRIZIONEART;
         }
