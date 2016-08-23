@@ -9,6 +9,7 @@ namespace Mekit\Sync\TriggeredOperations\Operators;
 
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
+use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\TriggeredOperations\TriggeredOperation;
 use Mekit\Sync\TriggeredOperations\TriggeredOperationInterface;
 
@@ -182,25 +183,25 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
       {
         if (!isset($crmData->ref_part_number_c) && $relatedDocumentLine->CODART)
         {
-          $crmData->ref_part_number_c = $relatedDocumentLine->CODART;
+          $crmData->ref_part_number_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->CODART);
           if ($relatedDocumentLine->DESCRIZIONEART)
           {
-            $crmData->ref_part_description_c = $relatedDocumentLine->DESCRIZIONEART;
+            $crmData->ref_part_description_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->DESCRIZIONEART);
           }
           if ($relatedDocumentLine->NRRIFPARTITA)
           {
-            $crmData->ref_part_unique_number_c = $relatedDocumentLine->NRRIFPARTITA;
+            $crmData->ref_part_unique_number_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->NRRIFPARTITA);
           }
         }
         //RIFCOMMCLI
         if (!isset($crmData->rif_commessa_code_c) && $relatedDocumentLine->RIFCOMMCLI)
         {
-          $crmData->rif_commessa_code_c = $relatedDocumentLine->RIFCOMMCLI;
+          $crmData->rif_commessa_code_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->RIFCOMMCLI);
         }
         //AGGIU
         if ($relatedDocumentLine->DESCRIZIONEART && !$relatedDocumentLine->CODART)
         {
-          $description[] = $relatedDocumentLine->DESCRIZIONEART;
+          $description[] = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->DESCRIZIONEART);
         }
       }
     }
