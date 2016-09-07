@@ -19,8 +19,14 @@ class AccountData extends Sync implements SyncInterface
   /** @var callable */
   protected $logger;
 
+  /** @var int|bool  - set it to 'false' to run through all */
+  protected $maxItemExecution = FALSE;
+
   /** @var SugarCrmRest */
   protected $sugarCrmRest;
+
+  /** @var array */
+  protected $excludeBecauseFailed = [];
 
   /** @var array */
   protected $counters = [];
@@ -78,6 +84,10 @@ class AccountData extends Sync implements SyncInterface
     {
       $this->counters["remote"]["index"]++;
       $this->saveRemoteItemInMetodoMain($remoteItem);
+      if ($this->maxItemExecution != FALSE && $this->counters["remote"]["index"] >= $this->maxItemExecution)
+      {
+        break;
+      }
     }
   }
 
@@ -97,6 +107,7 @@ class AccountData extends Sync implements SyncInterface
       . $this->counters["remote"]["index"]
     );
     $this->log("REMOTE ITEM: " . json_encode($remoteItem));
+    $this->log("");
     $operations = $this->getOperationsForRemoteItem($remoteItem);
     if (count($operations))
     {
@@ -104,11 +115,13 @@ class AccountData extends Sync implements SyncInterface
       {
         $operation = $this->saveRemoteItemInMetodo($remoteItem, $operation);
         $this->log("OPERATION(AFTER EXECUTION): " . json_encode($operation));
+        $this->log("");
       }
       //operations array has been modified with result of save execution in 'success' key
       //if true -> we need to push back the new CODES to CRM and UNSET the flags for sync
       $this->updateRemoteItemWithOperationData($remoteItem, $operations);
     }
+    $this->log("");
   }
 
   /**
@@ -120,7 +133,7 @@ class AccountData extends Sync implements SyncInterface
     if (count($operations))
     {
       $nameValueList = [
-        ['name' => 'id', 'value' => $remoteItem->id]
+        ['name' => 'id', 'value' => $remoteItem->id],
       ];
       foreach ($operations as $operation)
       {
@@ -128,12 +141,22 @@ class AccountData extends Sync implements SyncInterface
         {
           $codeColumnName = $operation['codeColumn'];
           $flagColumnName = $operation['flagColumn'];
+
           //reset operation flag so update does not occur again
           $nameValueList[] = ['name' => $flagColumnName, 'value' => 0];
+
           //set 'codiceMetodo' where INSERT operation was done
           if ($operation['sqlCommand'] == 'INSERT')
           {
             $nameValueList[] = ['name' => $codeColumnName, 'value' => $operation['CODCONTO']];
+          }
+        }
+        else
+        {
+          //$excludeBecauseFailed
+          if (!in_array($remoteItem->id, $this->excludeBecauseFailed))
+          {
+            $this->excludeBecauseFailed[] = $remoteItem->id;
           }
         }
       }
@@ -168,7 +191,8 @@ class AccountData extends Sync implements SyncInterface
       {
         $this->log("SQL EXEC FAILURE: " . $e->getMessage());
         $this->log("FAILED SQL: " . $sql);
-        $res = FALSE;
+        $operation['success'] = FALSE;
+        break;
       }
       $operation['success'] = $operation['success'] && $res;
     }
@@ -305,16 +329,6 @@ class AccountData extends Sync implements SyncInterface
     return $answer;
   }
 
-  /*
-   * INSERT INTO [IMP].[dbo].[ANAGRAFICACF] (
-   * TIPOCONTO,CODCONTO,DSCCONTO1,INDIRIZZO,CAP,LOCALITA,PROVINCIA,TELEFONO,
-   * FAX,TELEX,CODFISCALE,PARTITAIVA,NOTE,INDIRIZZOINTERNET,CODMASTRO,CODNAZIONE,
-   * CODICEISO,CODLINGUA,UTENTEMODIFICA,DATAMODIFICA,DSCCONTO2
-   * ) VALUES('C', 'C  4315', 'LA PECORANERA SRL SEMPLIFICATA', 'VIA VOLPIANO 48', '10040', 'Leini&#039;', 'TO', '0115502224',
-   *  '',
-   * 'info@lapecoranerafood.com', '11160570013', '11160570013', '', 'http://', '1070', '', 'IT', '', 'CrmSync', '2016-03-10 12:34:10', 'ANAGRAFICA INCOMPLETA'); [] []
-   * */
-
   /**
    * @param \stdClass $remoteItem
    * @param array     $operation
@@ -353,15 +367,15 @@ class AccountData extends Sync implements SyncInterface
       'INDIRIZZO' => $remoteItem->billing_address_street,
       'CAP' => $remoteItem->billing_address_postalcode,
       'LOCALITA' => $remoteItem->billing_address_city,
-      'PROVINCIA' => substr($remoteItem->billing_address_state, 0, 2),
       //@todo: temorary solution - we need to fix db!
+      'PROVINCIA' => substr($remoteItem->billing_address_state, 0, 2),
       'TELEFONO' => $remoteItem->phone_office,
       'FAX' => $remoteItem->phone_fax,
       'TELEX' => $primaryEmailAddress,
       'CODFISCALE' => $remoteItem->codice_fiscale_c,
       'PARTITAIVA' => $remoteItem->vat_number_c,
       'NOTE' => '',
-      'INDIRIZZOINTERNET' => $remoteItem->website,
+      'INDIRIZZOINTERNET' => ($remoteItem->website != 'http://' ? $remoteItem->website : ''),
       //PREDEFINITI
       'CODMASTRO' => ($operation['prefix'] == 'C' ? '1070' : '2050'),
       'CODNAZIONE' => 0,
@@ -391,6 +405,7 @@ class AccountData extends Sync implements SyncInterface
       unset($tableData['CODNAZIONE']);
       unset($tableData['CODICEISO']);
       unset($tableData['CODLINGUA']);
+      unset($tableData['NOTE']);
       /*
        * NOT UPDATING PI/CF - it will need to be done from Metodo
        */
@@ -450,6 +465,8 @@ class AccountData extends Sync implements SyncInterface
     {
       $columnValueNorm = ConversionHelper::cleanupMSSQLFieldValue($columnValue);
       $columnValueNorm = ConversionHelper::hexEncodeDataForMSSQL($columnValueNorm);
+
+      //$this->log("CONVERTED: '" . $columnValue . "' -> '" . $columnValueNorm . "'");
 
       if ($operation == 'UPDATE')
       {
@@ -541,7 +558,7 @@ class AccountData extends Sync implements SyncInterface
    */
   protected function executeSqlOnLocalDb($sql)
   {
-    $this->log("Excecuting SQL: " . $sql);
+    //$this->log("Excecuting SQL: " . $sql);
     $db = Configuration::getDatabaseConnection("SERVER2K8");
     $statement = $db->prepare($sql);
     $answer = $statement->execute();
@@ -590,7 +607,8 @@ class AccountData extends Sync implements SyncInterface
              OR accounts_cstm.mekit_sync_as_client_c = 1
              OR accounts_cstm.mekit_sync_as_supplier_c = 1
              ",
-      'order_by' => '',
+      /*'query' => "accounts.id = '8e0b676a-6629-17f8-211d-57cfee236a89'",*/
+      'order_by' => 'date_modified ASC',
       'offset' => 0,
       'select_fields' => [
         'id',
@@ -618,7 +636,8 @@ class AccountData extends Sync implements SyncInterface
         'imp_agent_code_c',
         'mekit_agent_code_c',
         'industry',
-        'mekit_industry_c'
+        'mekit_industry_c',
+        'date_modified'
       ],
       'link_name_to_fields_array' => [
         ['name' => 'email_addresses', 'value' => ['email_address', 'opt_out', 'primary_address']]
@@ -635,6 +654,16 @@ class AccountData extends Sync implements SyncInterface
     if ($entryListItem)
     {
       $answer = $this->sugarCrmRest->getNameValueListFromEntyListItem($entryListItem, $relationshipListItem);
+      if (in_array($answer->id, $this->excludeBecauseFailed))
+      {
+        $this->log("***********************************");
+        $this->log("This item has already failed once!");
+        $this->log("Stopping...");
+        $this->log("Failed entries:");
+        $this->log(print_r($this->excludeBecauseFailed, TRUE));
+        $this->log("***********************************");
+        $answer = FALSE;
+      }
     }
     return $answer;
   }
