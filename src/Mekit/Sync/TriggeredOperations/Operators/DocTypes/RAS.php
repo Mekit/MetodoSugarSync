@@ -10,49 +10,15 @@ namespace Mekit\Sync\TriggeredOperations\Operators\DocTypes;
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\ConversionHelper;
+use Mekit\Sync\TriggeredOperations\Operators\Document;
 use Mekit\Sync\TriggeredOperations\TriggeredOperation;
-use Mekit\Sync\TriggeredOperations\TriggeredOperationInterface;
 
-class RAS extends TriggeredOperation implements TriggeredOperationInterface
+
+class RAS extends Document
 {
   /** @var  string */
   protected $logPrefix = 'Document[RAS]';
 
-  /**
-   * @return bool
-   */
-  public function sync()
-  {
-    $result = FALSE;
-
-
-    if ($this->operationElement->operation_type == "D")
-    {
-      //data element has already been deleted - we only need identifier and document type
-      $dataElement = new \stdClass();
-      $dataElement->PROGRESSIVO = $this->operationElement->identifier_data;
-      $dataElement->TIPODOC = $this->operationElement->param1;
-    }
-    else
-    {
-      $dataElement = $this->getDataElement();
-    }
-
-    $op = TriggeredOperation::TR_OP_DELETE;
-    try
-    {
-      $result = $this->crmUpdateItem($dataElement);
-      $this->log("UPDATE RESULT: " . ($result ? "SUCCESS" : "FAIL"));
-      $op = ($result ? TriggeredOperation::TR_OP_DELETE : TriggeredOperation::TR_OP_INCREMENT);
-    } catch(\Exception $e)
-    {
-      $this->log("ERROR: " . $e->getMessage());
-    }
-
-    $this->setTaskOnTrigger($op);
-
-    return $result;
-  }
 
   /**
    * @param \stdClass $dataElement
@@ -81,37 +47,19 @@ class RAS extends TriggeredOperation implements TriggeredOperationInterface
 
     try
     {
-      $syncItem->id = $this->crmLoadRemoteCaseId($dataElement->PROGRESSIVO);
+      $syncItem->id = $this->crmLoadRemoteIdForModule(
+        "Cases", "cases_cstm.imp_doc_progressivo_c = '" . $dataElement->PROGRESSIVO . "'"
+      );
     } catch(\Exception $e)
     {
       $this->log($e->getMessage());
-      $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
+      $this->log("ERROR GETTING ID FROM CRM - UPDATE WILL BE SKIPPED");
       return $answer;
     }
 
-    if (isset($syncItem->deleted) && $syncItem->deleted == 1 && !$syncItem->id)
-    {
-      $this->log("CANNOT DELETE ITEM WITHOUT ID - DELETE WILL BE SKIPPED");
-      return $answer;
-    }
-
-    $arguments = [
-      'module_name' => 'Cases',
-      'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
-    ];
-
-    $this->log("SYNC: " . print_r($syncItem, TRUE));
-
-    try
-    {
-      $this->sugarCrmRest->comunicate('set_entries', $arguments);
-      $answer = TRUE;
-    } catch(SugarCrmRestException $e)
-    {
-      //fail silently - we will do it next time
-    }
-
+    $answer = $this->crmSyncItem("Cases", $syncItem);
     return $answer;
+
   }
 
   /**
@@ -123,10 +71,7 @@ class RAS extends TriggeredOperation implements TriggeredOperationInterface
     $crmData = new \stdClass();
 
     $relatedAccountId = $this->crmLoadRelatedAccountId($dataElement->CODCLIFOR);
-
     $relatedAccountData = $this->crmLoadRelatedAccountData($relatedAccountId);
-    //$this->log("ACCOUNT DATA($relatedAccountId): " . json_encode($relatedAccountData));
-
     $relatedDocumentLines = $this->metodoLoadRelatedDocumentLines($dataElement->PROGRESSIVO);
 
 
@@ -213,38 +158,7 @@ class RAS extends TriggeredOperation implements TriggeredOperationInterface
   }
 
 
-  /**
-   * @param string $PROGRESSIVO
-   * @return bool|string
-   * @throws SugarCrmRestException
-   */
-  protected function crmLoadRemoteCaseId($PROGRESSIVO)
-  {
-    $crm_id = FALSE;
-    $arguments = [
-      'module_name' => 'Cases',
-      'query' => "cases_cstm.imp_doc_progressivo_c = '" . $PROGRESSIVO . "'",
-      'order_by' => "",
-      'offset' => 0,
-      'select_fields' => ['id'],
-      'link_name_to_fields_array' => [],
-      'max_results' => 2,
-      'deleted' => FALSE,
-      'Favorites' => FALSE,
-    ];
 
-    /** @var \stdClass $result */
-    $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
-
-    if (isset($result) && isset($result->entry_list) && count($result->entry_list) == 1)
-    {
-      /** @var \stdClass $remoteItem */
-      $remoteItem = $result->entry_list[0];
-      $crm_id = $remoteItem->id;
-    }
-
-    return $crm_id;
-  }
 
   /**
    * @param string $crmid
@@ -352,25 +266,5 @@ class RAS extends TriggeredOperation implements TriggeredOperationInterface
     return $crm_id;
   }
 
-  /**
-   * @param string $PROGRESSIVO
-   * @return bool|array
-   */
-  protected function metodoLoadRelatedDocumentLines($PROGRESSIVO)
-  {
-    $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $sql = "SELECT TIPORIGA, CODART, DESCRIZIONEART, NRRIFPARTITA, RIFCOMMCLI FROM IMP.dbo.RIGHEDOCUMENTI WHERE"
-           . " IDTESTA = " . $PROGRESSIVO . " ORDER BY POSIZIONE";
-    try
-    {
-      $st = $db->prepare($sql);
-      $st->execute();
-      $answer = $st->fetchAll(\PDO::FETCH_OBJ);
-    } catch(\Exception $e)
-    {
-      $answer = FALSE;
-    }
-    return $answer;
-  }
 
 }

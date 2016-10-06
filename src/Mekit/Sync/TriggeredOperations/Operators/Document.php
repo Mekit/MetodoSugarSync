@@ -8,6 +8,7 @@
 namespace Mekit\Sync\TriggeredOperations\Operators;
 
 use Mekit\Console\Configuration;
+use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
 use Mekit\Sync\TriggeredOperations\TriggeredOperation;
 use Mekit\Sync\TriggeredOperations\TriggeredOperationInterface;
 
@@ -23,14 +24,10 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   /** @var  string */
   protected $logPrefix = 'Document';
 
-  /** @var array */
-  protected $docTypeMap = [];
-
 
   public function __construct(callable $logger, \stdClass $operationElement)
   {
     parent::__construct($logger, $operationElement);
-    $this->setupDocTypeMap();
   }
 
   /**
@@ -39,99 +36,138 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   public function sync()
   {
     $result = FALSE;
-    $op = TriggeredOperation::TR_OP_DELETE;
 
+    if ($this->operationElement->operation_type == "D")
+    {
+      //data element has already been deleted - we only need identifier and document type
+      $dataElement = new \stdClass();
+      $dataElement->PROGRESSIVO = $this->operationElement->identifier_data;
+      $dataElement->TIPODOC = $this->operationElement->param1;
+    }
+    else
+    {
+      $dataElement = $this->getDataElement();
+    }
+
+    $op = TriggeredOperation::TR_OP_DELETE;
     try
     {
-
-      $docTypeOperator = $this->getInstanceForDocTypeOperationElement();
-      $docTypeOperator->sync();
-      $op = $docTypeOperator->getTaskOnTrigger();
+      $result = $this->crmUpdateItem($dataElement);
+      $this->log("UPDATE RESULT: " . ($result ? "SUCCESS" : "FAIL"));
+      $op = ($result ? TriggeredOperation::TR_OP_DELETE : TriggeredOperation::TR_OP_INCREMENT);
     } catch(\Exception $e)
     {
       $this->log("ERROR: " . $e->getMessage());
     }
 
     $this->setTaskOnTrigger($op);
+
     return $result;
   }
 
   /**
-   * The property 'param1' on $operationElement holds the 3 digit code of the document type
-   * which should already be present in $docTypeMap (if not we don't handle it ;))
+   * Must be implemented in each docType class
    *
-   * @return TriggeredOperationInterface
+   * @param \stdClass $dataElement
    * @throws \Exception
+   * @return bool
    */
-  protected function getInstanceForDocTypeOperationElement()
+  protected function crmUpdateItem($dataElement)
   {
-    if (!isset($this->operationElement->param1) || empty($this->operationElement->param1))
-    {
-      throw new \Exception("Column 'param1' is missing on Operation Element");
-    }
-    $docType = $this->operationElement->param1;
-    if (!array_key_exists($docType, $this->docTypeMap))
-    {
-      throw new \Exception("Document type($docType) is not defined in docTypeMap!");
-    }
-
-    $docTypeMapItem = $this->docTypeMap[$docType];
-    $reflection = new \ReflectionClass($docTypeMapItem["doc-type-class-name"]);
-
-    /** @var TriggeredOperationInterface $operatorInstance */
-    $operatorInstance = $reflection->newInstanceArgs([$this->logger, $this->operationElement]);
-
-    return $operatorInstance;
+    return FALSE;
   }
 
   /**
-   * @throws \Exception
+   * @param string    $moduleName
+   * @param \stdClass $syncItem
+   * @return bool
    */
-  protected function setupDocTypeMap()
+  protected function crmSyncItem($moduleName, $syncItem)
   {
-    $cfg = Configuration::getConfiguration();
-    if (!isset($cfg["document-type-map"]))
-    {
-      throw new \Exception("Missing 'document-type-map' key from configuration file!");
-    }
-    if (!is_array($cfg["document-type-map"]))
-    {
-      throw new \Exception("The 'document-type-map' key in configuration must be an array!");
-    }
-    $docTypeMap = [];
-    foreach ($cfg["document-type-map"] as $docType => $docTypeClassName)
-    {
-      $this->checkDocTypeClass($docTypeClassName);
-      $docTypeMap[$docType] = [
-        'doc-type-class-name' => $docTypeClassName,
-      ];
-    }
-    //$this->log("DOC TYPE MAP: " . json_encode($docTypeMap));
+    $answer = FALSE;
 
-    $this->docTypeMap = $docTypeMap;
+    if (isset($syncItem->deleted) && $syncItem->deleted == 1 && !$syncItem->id)
+    {
+      $this->log("CANNOT DELETE ITEM WITHOUT ID - DELETE WILL BE SKIPPED");
+      return $answer;
+    }
+
+    $arguments = [
+      'module_name' => $moduleName,
+      'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
+    ];
+
+    $this->log("SYNC ITEM: " . print_r($syncItem, TRUE));
+
+    try
+    {
+      $this->sugarCrmRest->comunicate('set_entries', $arguments);
+      $answer = TRUE;
+    } catch(SugarCrmRestException $e)
+    {
+      //fail silently - we will do it next time
+    }
+
+    return $answer;
   }
 
   /**
-   * @param string $docTypeClassName
-   * @throws \Exception
+   *
+   * @todo: this is doggy: look in account - we need to bail out if multiple or if failure
+   * otherwise we risk to create multiple/duplicated elements
+   *
+   * @param string $moduleName
+   * @param string $query
+   * @return bool|string
+   * @throws SugarCrmRestException
    */
-  protected function checkDocTypeClass($docTypeClassName)
+  protected function crmLoadRemoteIdForModule($moduleName, $query)
   {
-    if (!class_exists($docTypeClassName))
+    $crm_id = FALSE;
+    $arguments = [
+      'module_name' => $moduleName,
+      'query' => $query,
+      'order_by' => "",
+      'offset' => 0,
+      'select_fields' => ['id'],
+      'link_name_to_fields_array' => [],
+      'max_results' => 2,
+      'deleted' => FALSE,
+      'Favorites' => FALSE,
+    ];
+
+    /** @var \stdClass $result */
+    $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
+
+    if (isset($result) && isset($result->entry_list) && count($result->entry_list) == 1)
     {
-      throw new \Exception("Inexistent operation class(" . $docTypeClassName . ")!");
+      /** @var \stdClass $remoteItem */
+      $remoteItem = $result->entry_list[0];
+      $crm_id = $remoteItem->id;
     }
-    $reflection = new \ReflectionClass($docTypeClassName);
-    if (!$reflection->implementsInterface('Mekit\Sync\TriggeredOperations\TriggeredOperationInterface'))
+
+    return $crm_id;
+  }
+
+  /**
+   * @param string $PROGRESSIVO
+   * @return bool|array
+   */
+  protected function metodoLoadRelatedDocumentLines($PROGRESSIVO)
+  {
+    $db = Configuration::getDatabaseConnection("SERVER2K8");
+    $sql = "SELECT TIPORIGA, CODART, DESCRIZIONEART, NRRIFPARTITA, RIFCOMMCLI FROM IMP.dbo.RIGHEDOCUMENTI WHERE"
+           . " IDTESTA = " . $PROGRESSIVO . " ORDER BY POSIZIONE";
+    try
     {
-      throw new \Exception(
-        "Operation class(" . $docTypeClassName . ") does not implement TriggeredOperationInterface!"
-      );
-    }
-    if ($reflection->getParentClass()->getName() != 'Mekit\Sync\TriggeredOperations\TriggeredOperation')
+      $st = $db->prepare($sql);
+      $st->execute();
+      $answer = $st->fetchAll(\PDO::FETCH_OBJ);
+    } catch(\Exception $e)
     {
-      throw new \Exception("Operation class(" . $docTypeClassName . ") does not extend TriggeredOperation!");
+      $answer = FALSE;
     }
+    return $answer;
   }
 
 }

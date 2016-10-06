@@ -64,15 +64,20 @@ class OperationsEnumerator
       $this->counter++;
       $this->log(str_repeat("-", 80));
       $this->log("OP[" . $this->counter . "]: " . json_encode($operationElement));
+
+      $op = TriggeredOperation::TR_OP_DELETE;
+
       try
       {
         $operator = $this->getOperatorInstanceForOperationElement($operationElement);
         $operator->sync();
-        $this->executeTaskOnOperationElement($operationElement, $operator->getTaskOnTrigger());
+        $op = $operator->getTaskOnTrigger();
       } catch(\Exception $e)
       {
         $this->log("ERROR[" . $this->counter . "]: " . $e->getMessage());
       }
+
+      $this->executeTaskOnOperationElement($operationElement, $op);
     }
     $this->log("Executed #" . $this->counter . " (FORCE_LIMIT=$FORCE_LIMIT)");
   }
@@ -133,7 +138,10 @@ class OperationsEnumerator
     if (!$this->localItemStatement)
     {
       $db = Configuration::getDatabaseConnection("SERVER2K8");
-      $sql = "SELECT * FROM [Crm2Metodo].[dbo].[TriggeredOperations] AS T ORDER BY T.sync_datetime ASC";
+      $sql = "SELECT * 
+        FROM [Crm2Metodo].[dbo].[TriggeredOperations] AS T
+        ORDER BY T.sync_datetime ASC, T.operation_datetime ASC
+        ";
       $this->localItemStatement = $db->prepare($sql);
       $this->localItemStatement->execute();
     }
@@ -172,12 +180,28 @@ class OperationsEnumerator
       throw new \Exception("Column 'table_name' is missing Operation Element");
     }
     $table_name = $operationElement->table_name;
+    //$this->log("Looking for Operator for table: " . $table_name);
+
     if (!array_key_exists($table_name, $this->tableMap))
     {
       throw new \Exception("Table name($table_name) is not defined in table_map");
     }
+
     $tableMapItem = $this->tableMap[$table_name];
-    $reflection = new \ReflectionClass($tableMapItem["operation-class-name"]);
+    //$this->log("Table Map Item: " . json_encode($tableMapItem));
+
+    $operatorClassName = $tableMapItem["operation-class-name"];
+    //$this->log("Found Operator class name: " . $operatorClassName);
+
+    if ($operatorClassName == 'Mekit\Sync\TriggeredOperations\DocumentTypeSelector')
+    {
+      $selector = new DocumentTypeSelector($this->logger);
+      $operatorClassName = $selector->getClassNameForDocTypeOperationElement($operationElement);
+      //$this->log("Found Operator(DT) class name: " . $operatorClassName);
+    }
+
+    $this->checkOperationClass($operatorClassName);
+    $reflection = new \ReflectionClass($operatorClassName);
 
     /** @var TriggeredOperationInterface $operatorInstance */
     $operatorInstance = $reflection->newInstanceArgs([$this->logger, $operationElement]);
@@ -204,7 +228,6 @@ class OperationsEnumerator
     {
       $tableNameParts = $this->getMSSQLTableNameParts($tableName);
       $this->checkMSSQLTable($tableNameParts);
-      $this->checkOperationClass($operationClassName);
       $tableMap[$tableName] = [
         'table-name-parts' => $tableNameParts,
         'operation-class-name' => $operationClassName,
@@ -232,7 +255,7 @@ class OperationsEnumerator
         "Operation class(" . $operationClassName . ") does not implement TriggeredOperationInterface!"
       );
     }
-    if ($reflection->getParentClass()->getName() != 'Mekit\Sync\TriggeredOperations\TriggeredOperation')
+    if (!$reflection->isSubclassOf('Mekit\Sync\TriggeredOperations\TriggeredOperation'))
     {
       throw new \Exception("Operation class(" . $operationClassName . ") does not extend TriggeredOperation!");
     }
