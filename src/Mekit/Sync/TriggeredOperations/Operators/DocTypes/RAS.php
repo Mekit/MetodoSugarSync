@@ -13,7 +13,10 @@ use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\TriggeredOperations\Operators\Document;
 use Mekit\Sync\TriggeredOperations\TriggeredOperation;
 
-
+/**
+ * Class RAS
+ * @package Mekit\Sync\TriggeredOperations\Operators\DocTypes
+ */
 class RAS extends Document
 {
   /** @var  string */

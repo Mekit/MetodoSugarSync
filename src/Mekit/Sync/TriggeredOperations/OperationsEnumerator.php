@@ -32,7 +32,7 @@ class OperationsEnumerator
   protected $localItemStatement;
 
   /** @var int */
-  protected $maxIncrement = 10;
+  protected $maxOperationFails = 100000;
 
   /** @var int */
   protected $counter = 0;
@@ -62,8 +62,8 @@ class OperationsEnumerator
         break;
       }
       $this->counter++;
-      $this->log(str_repeat("-", 80));
-      $this->log("OP[" . $this->counter . "]: " . json_encode($operationElement));
+      $this->log(str_repeat("-", 80) . "[" . $this->counter . "]");
+      //$this->log("OP[" . $this->counter . "]: " . json_encode($operationElement));
 
       $op = TriggeredOperation::TR_OP_DELETE;
 
@@ -89,10 +89,12 @@ class OperationsEnumerator
   protected function executeTaskOnOperationElement(\stdClass $operationElement, $task)
   {
     if ($task == TriggeredOperation::TR_OP_INCREMENT
-        && intval($operationElement->sync_attempt_count) >= $this->maxIncrement
+        && intval($operationElement->sync_attempt_count) >= $this->maxOperationFails
     )
     {
-      $this->log("Operation has reached maximum(" . $this->maxIncrement . ") number of attempts! Setting to delete.");
+      $this->log(
+        "Operation has reached maximum(" . $this->maxOperationFails . ") number of attempts! Setting to delete."
+      );
       $task = TriggeredOperation::TR_OP_DELETE;
     }
 
@@ -203,6 +205,7 @@ class OperationsEnumerator
     $this->checkOperationClass($operatorClassName);
     $reflection = new \ReflectionClass($operatorClassName);
 
+    $operationElement->tableMapItem = $tableMapItem;
     /** @var TriggeredOperationInterface $operatorInstance */
     $operatorInstance = $reflection->newInstanceArgs([$this->logger, $operationElement]);
 
@@ -322,15 +325,6 @@ class OperationsEnumerator
     $answer['table-name'] = $parts[2];
     return $answer;
   }
-
-
-  /**
-   * @param array $tableMap
-   */
-  //  public function setTableMap($tableMap)
-  //  {
-  //    $this->tableMap = $tableMap;
-  //  }
 
   /**
    * @param string $msg

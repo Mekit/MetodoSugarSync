@@ -41,6 +41,60 @@ class ConversionHelper
     return $value;
   }
 
+  /**
+   * @param string $originalCode
+   * @param array  $prefixes
+   * @param bool   $nospace - Do NOT space prefix from number - new crm cannot have spaces in dropdowns
+   * @return string
+   */
+  public static function fixAgentCode($originalCode, $prefixes, $nospace = FALSE)
+  {
+    $normalizedCode = '';
+    if (!empty($originalCode))
+    {
+      $codeLength = 7;
+      $normalizedCode = '';
+      $PREFIX = strtoupper(substr($originalCode, 0, 1));
+      $NUMBER = trim(substr($originalCode, 1));
+      $SPACES = '';
+      if (in_array($PREFIX, $prefixes))
+      {
+        if (0 != (int) $NUMBER)
+        {
+          if (!$nospace)
+          {
+            $SPACES = str_repeat(' ', $codeLength - strlen($PREFIX) - strlen($NUMBER));
+          }
+          $normalizedCode = $PREFIX . $SPACES . $NUMBER;
+        }
+        else
+        {
+          //$this->log("UNSETTING BAD CODE[not numeric]: '" . $originalCode . "'");
+        }
+      }
+      else
+      {
+        //$this->log("UNSETTING BAD CODE[not C|F]: '" . $originalCode . "'");
+      }
+    }
+    return $normalizedCode;
+  }
+
+  /**
+   * @param string   $numberString
+   * @param bool|int $decimals
+   * @return string
+   */
+  public static function fixCurrency($numberString, $decimals = FALSE)
+  {
+    $numberString = ($numberString ? $numberString : '0');
+    if ($decimals)
+    {
+      $numberString = number_format((float) $numberString, $decimals);
+    }
+    $numberString = str_replace('.', ',', $numberString);
+    return $numberString;
+  }
 
   /**
    * @param string $value
