@@ -29,7 +29,7 @@ class TriggeredOperation
   protected $operationElement;
 
   /** @var int */
-  private $taskOnTrigger = self::TR_OP_DELETE;
+  private $taskOnTrigger = self::TR_OP_NOTHING;
 
   /** @var SugarCrmRest */
   protected $sugarCrmRest;
@@ -42,6 +42,9 @@ class TriggeredOperation
   }
 
   /**
+   * Loads the row from the database which is referenced by the operation element
+   * through identifier column(id column name) and data(id of the column)
+   *
    * @return bool|\stdClass
    */
   protected function getDataElement()

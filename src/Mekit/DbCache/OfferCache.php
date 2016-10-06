@@ -10,22 +10,23 @@ namespace Mekit\DbCache;
 class OfferCache extends CacheDb {
     /** @var array */
     protected $columns = [
-        'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
-        'crm_id' => ['type' => 'TEXT', 'index' => FALSE],
-        'database_metodo' => ['type' => 'TEXT', 'index' => TRUE],
-        'id_head' => ['type' => 'TEXT', 'index' => TRUE],
-        'document_number' => ['type' => 'TEXT', 'index' => FALSE],
-        'data_doc' => ['type' => 'TEXT', 'index' => FALSE],
-        'cod_c_f' => ['type' => 'TEXT', 'index' => FALSE],
-        'imp_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
-        'mekit_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
-        'rif_opportunity_identifier' => ['type' => 'TEXT', 'index' => FALSE],
-        'dsc_payment' => ['type' => 'TEXT', 'index' => FALSE],
-        'tot_imponibile_euro' => ['type' => 'TEXT', 'index' => FALSE],
-        'tot_imposta_euro' => ['type' => 'TEXT', 'index' => FALSE],
-        'tot_documento_euro' => ['type' => 'TEXT', 'index' => FALSE],
-        'metodo_last_update_time' => ['type' => 'TEXT', 'index' => FALSE],
-        'crm_last_update_time' => ['type' => 'TEXT', 'index' => FALSE]
+      'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
+      'crm_id' => ['type' => 'TEXT', 'index' => FALSE],
+      'database_metodo' => ['type' => 'TEXT', 'index' => TRUE],
+      'id_head' => ['type' => 'TEXT', 'index' => TRUE],
+      'document_number' => ['type' => 'TEXT', 'index' => FALSE],
+      'document_name' => ['type' => 'TEXT', 'index' => FALSE],
+      'data_doc' => ['type' => 'TEXT', 'index' => FALSE],
+      'cod_c_f' => ['type' => 'TEXT', 'index' => FALSE],
+      'imp_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
+      'mekit_agent_code' => ['type' => 'TEXT', 'index' => FALSE],
+      'rif_opportunity_identifier' => ['type' => 'TEXT', 'index' => FALSE],
+      'dsc_payment' => ['type' => 'TEXT', 'index' => FALSE],
+      'tot_imponibile_euro' => ['type' => 'TEXT', 'index' => FALSE],
+      'tot_imposta_euro' => ['type' => 'TEXT', 'index' => FALSE],
+      'tot_documento_euro' => ['type' => 'TEXT', 'index' => FALSE],
+      'metodo_last_update_time' => ['type' => 'TEXT', 'index' => FALSE],
+      'crm_last_update_time' => ['type' => 'TEXT', 'index' => FALSE]
     ];
 
     /**

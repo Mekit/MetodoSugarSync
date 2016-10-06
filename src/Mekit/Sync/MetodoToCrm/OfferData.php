@@ -162,13 +162,13 @@ class OfferData extends Sync implements SyncInterface {
     protected function saveOfferLinesOnRemote($cachedOfferItem, $cachedOfferLines) {
         if (empty($cachedOfferItem->crm_id)) {
             $this->log("OfferLInes - Cached Offer does not have crmid - SKIPPING!");
-            return;
+          return FALSE;
         }
         if (!count($cachedOfferLines)) {
             $this->log("OfferLInes - No lines for this offer - SKIPPING!");
-            return;
+          return FALSE;
         }
-        //we wiil use date of the offer to decide if to update lines
+      //we will use date of the offer to decide if to update lines
         $ISO = 'Y-m-d\TH:i:sO';
         $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cachedOfferItem->metodo_last_update_time);
         $crmLastUpdate = \DateTime::createFromFormat($ISO, $cachedOfferItem->crm_last_update_time);
@@ -181,7 +181,7 @@ class OfferData extends Sync implements SyncInterface {
                 $remoteLineGroupID = $this->loadRemoteOfferLineGroupId($cachedOfferItem);
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-                return;
+              return FALSE;
             }
 
             //Save Line Group
@@ -191,12 +191,12 @@ class OfferData extends Sync implements SyncInterface {
                 $remoteLineGroupID = $this->saveOfferLineGroupOnRemote($groupData);
             } catch(\Exception $e) {
                 $this->log("CANNOT LOAD GROUP ID FROM CRM - UPDATE WILL BE SKIPPED: " . $e->getMessage());
-                return;
+              return FALSE;
             }
 
             if (!$remoteLineGroupID) {
                 $this->log("OfferLines - No remote group id - SKIPPING!");
-                return;
+              return FALSE;
             }
 
             /** @var \stdClass $cachedOfferLine */
@@ -204,7 +204,9 @@ class OfferData extends Sync implements SyncInterface {
                 $this->saveOfferLineOnRemote($cachedOfferLine, $remoteOfferId, $remoteLineGroupID);
                 //$this->log("OfferLines - LINE ID: " . json_encode($remoteLineItem));
             }
+          return TRUE;
         }
+      return FALSE;
     }
 
     /**
@@ -674,8 +676,12 @@ class OfferData extends Sync implements SyncInterface {
 
                     $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $cacheItem->data_doc);
 
+                  //NUMRIFDOC (varchar15)
+                  //@todo: usare document_name(NUMRIFDOC) come nome
                     $syncItem->name = 'Opp. su ' . $cacheItem->database_metodo . ' - ' . $dataDoc->format("Y") . ' - '
                                       . $cacheItem->document_number;
+
+
                   $syncItem->date_closed = $dataDoc->add(new \DateInterval('P10D'))->format('Y-m-d');
                     $syncItem->statovendita_c = '2';//Offerta
                     $syncItem->amount = $this->fixCurrency($cacheItem->tot_imponibile_euro);
@@ -813,7 +819,6 @@ class OfferData extends Sync implements SyncInterface {
      * @throws \Exception
      */
     protected function loadRemoteOfferLineId($cacheItem) {
-        $crm_id = FALSE;
         $arguments = [
             'module_name' => 'AOS_Products_Quotes',
             'query' => "aos_products_quotes_cstm.metodo_id_line_c = '" . $cacheItem->id_line . "'"
@@ -926,6 +931,7 @@ class OfferData extends Sync implements SyncInterface {
      * otherwise we will check if we already have an opportunity related to this offer
      *
      * @param string $remoteOfferId
+     * @param string $rif_opportunity_identifier
      * @return string
      */
     protected function loadRemoteOpportunityId($remoteOfferId, $rif_opportunity_identifier) {
@@ -1377,6 +1383,7 @@ class OfferData extends Sync implements SyncInterface {
             $sql = "SELECT
                 TD.PROGRESSIVO AS id_head,
                 TD.NUMERODOC AS document_number,
+                TD.NUMRIFDOC AS document_name,
                 TD.DATADOC AS data_doc,
                 TD.CODCLIFOR AS cod_c_f,
                 TD.CODAGENTE1 AS " . strtolower($database) . "_agent_code,

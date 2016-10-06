@@ -8,8 +8,6 @@
 namespace Mekit\Sync\TriggeredOperations\Operators;
 
 use Mekit\Console\Configuration;
-use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
-use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\TriggeredOperations\TriggeredOperation;
 use Mekit\Sync\TriggeredOperations\TriggeredOperationInterface;
 
@@ -26,7 +24,14 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   protected $logPrefix = 'Document';
 
   /** @var array */
-  protected $handledDocTypes = ['RAS'];
+  protected $docTypeMap = [];
+
+
+  public function __construct(callable $logger, \stdClass $operationElement)
+  {
+    parent::__construct($logger, $operationElement);
+    $this->setupDocTypeMap();
+  }
 
   /**
    * @return bool
@@ -34,355 +39,99 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   public function sync()
   {
     $result = FALSE;
+    $op = TriggeredOperation::TR_OP_DELETE;
 
-    if ($this->operationElement->operation_type == "D")
+    try
     {
-      //data element has already been deleted - we only need identifier and document type
-      $dataElement = new \stdClass();
-      $dataElement->PROGRESSIVO = $this->operationElement->identifier_data;
-      $dataElement->TIPODOC = $this->operationElement->param1;
-    }
-    else
-    {
-      $dataElement = $this->getDataElement();
-    }
 
-    if (!$dataElement)
+      $docTypeOperator = $this->getInstanceForDocTypeOperationElement();
+      $docTypeOperator->sync();
+      $op = $docTypeOperator->getTaskOnTrigger();
+    } catch(\Exception $e)
     {
-      $this->setTaskOnTrigger(TriggeredOperation::TR_OP_DELETE);
-      return $result;
+      $this->log("ERROR: " . $e->getMessage());
     }
 
-    if (!in_array($dataElement->TIPODOC, $this->handledDocTypes))
-    {
-      $this->setTaskOnTrigger(TriggeredOperation::TR_OP_DELETE);
-      return $result;
-    }
-
-    $result = $this->crmUpdateItem($dataElement);
-
-    if ($result)
-    {
-      $this->setTaskOnTrigger(TriggeredOperation::TR_OP_DELETE);
-    }
-    else
-    {
-      $this->setTaskOnTrigger(TriggeredOperation::TR_OP_INCREMENT);
-    }
-
-
+    $this->setTaskOnTrigger($op);
     return $result;
   }
 
   /**
-   * @param \stdClass $dataElement
-   * @return bool
+   * The property 'param1' on $operationElement holds the 3 digit code of the document type
+   * which should already be present in $docTypeMap (if not we don't handle it ;))
+   *
+   * @return TriggeredOperationInterface
+   * @throws \Exception
    */
-  protected function crmUpdateItem($dataElement)
+  protected function getInstanceForDocTypeOperationElement()
   {
-    $answer = FALSE;
-
-    if ($this->operationElement->operation_type != "D")
+    if (!isset($this->operationElement->param1) || empty($this->operationElement->param1))
     {
-      $dataElement = $this->updateCrmDataOnDataElement($dataElement);
-      $syncItem = $dataElement->crmData;
+      throw new \Exception("Column 'param1' is missing on Operation Element");
     }
-    else
+    $docType = $this->operationElement->param1;
+    if (!array_key_exists($docType, $this->docTypeMap))
     {
-      $syncItem = new \stdClass();
-      $syncItem->deleted = 1;
+      throw new \Exception("Document type($docType) is not defined in docTypeMap!");
     }
 
-    try
-    {
-      $syncItem->id = $this->crmLoadRemoteCaseId($dataElement->PROGRESSIVO);
-    } catch(\Exception $e)
-    {
-      $this->log($e->getMessage());
-      $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
-      return $answer;
-    }
+    $docTypeMapItem = $this->docTypeMap[$docType];
+    $reflection = new \ReflectionClass($docTypeMapItem["doc-type-class-name"]);
 
-    if (isset($syncItem->deleted) && $syncItem->deleted == 1 && !$syncItem->id)
-    {
-      $this->log("CANNOT DELETE ITEM WITHOUT ID - DELETE WILL BE SKIPPED");
-      return $answer;
-    }
+    /** @var TriggeredOperationInterface $operatorInstance */
+    $operatorInstance = $reflection->newInstanceArgs([$this->logger, $this->operationElement]);
 
-    $arguments = [
-      'module_name' => 'Cases',
-      'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
-    ];
-
-    $this->log("SYNC: " . print_r($syncItem, TRUE));
-
-    try
-    {
-      $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-      $this->log("REMOTE UPDATE RESULT: " . json_encode($result));
-      $answer = TRUE;
-    } catch(SugarCrmRestException $e)
-    {
-      //fail silently - we will do it next time
-    }
-
-    return $answer;
+    return $operatorInstance;
   }
 
   /**
-   * @param \stdClass $dataElement
-   * @return \stdClass
+   * @throws \Exception
    */
-  protected function updateCrmDataOnDataElement($dataElement)
+  protected function setupDocTypeMap()
   {
-    $crmData = new \stdClass();
-
-    $relatedAccountId = $this->crmLoadRelatedAccountId($dataElement->CODCLIFOR);
-
-    $relatedAccountData = $this->crmLoadRelatedAccountData($relatedAccountId);
-    //$this->log("ACCOUNT DATA($relatedAccountId): " . json_encode($relatedAccountData));
-
-    $relatedDocumentLines = $this->metodoLoadRelatedDocumentLines($dataElement->PROGRESSIVO);
-
-
-    $dataDoc = \DateTime::createFromFormat('Y-m-d H:i:s.u', $dataElement->DATADOC);
-    $closeDataDoc = $dataDoc->add(new \DateInterval('P7D'))->format('Y-m-d');
-
-    $crmData->name = 'RAS ' . $dataElement->ESERCIZIO . '/' . $dataElement->NUMERODOC;
-
-    $crmData->state = $dataElement->DOCCHIUSO == 1 ? 2 : 1;//1=Aperto / 2=Chiuso
-
-    $crmData->status = $dataElement->DOCCHIUSO == 1 ? "2_1" : "1_1";//1_1=New / 2_2=Terminato
-
-    $crmData->priority = 'P4';//Bassa
-
-    if ($relatedAccountId)
+    $cfg = Configuration::getConfiguration();
+    if (!isset($cfg["document-type-map"]))
     {
-      $crmData->account_id = $relatedAccountId;
+      throw new \Exception("Missing 'document-type-map' key from configuration file!");
     }
-
-    if (isset($relatedAccountData["shipping_address_city"]))
+    if (!is_array($cfg["document-type-map"]))
     {
-      $crmData->jjwg_maps_address_c = $relatedAccountData["shipping_address_city"];
+      throw new \Exception("The 'document-type-map' key in configuration must be an array!");
     }
-
-    $crmData->area_dinteresse_imp_c = 'service';//service = Assistenza
-
-    $crmData->assigned_user_id = 'bbe923ec-d288-b3a3-5b0c-5370bd2b9e40';//Chiara Aragno
-
-    $crmData->date_close_prg_c = $closeDataDoc;
-
-    $crmData->imp_ras_number_c = $dataElement->ESERCIZIO . '/' . $dataElement->NUMERODOC;
-
-
-    $description = [];
-    if ($relatedDocumentLines && count($relatedDocumentLines))
+    $docTypeMap = [];
+    foreach ($cfg["document-type-map"] as $docType => $docTypeClassName)
     {
-
-      foreach ($relatedDocumentLines as $relatedDocumentLine)
-      {
-        if (!isset($crmData->ref_part_number_c) && $relatedDocumentLine->CODART)
-        {
-          $crmData->ref_part_number_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->CODART);
-          if ($relatedDocumentLine->DESCRIZIONEART)
-          {
-            $crmData->ref_part_description_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->DESCRIZIONEART);
-          }
-          if ($relatedDocumentLine->NRRIFPARTITA)
-          {
-            $crmData->ref_part_unique_number_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->NRRIFPARTITA);
-          }
-        }
-        //RIFCOMMCLI
-        if (!isset($crmData->rif_commessa_code_c) && $relatedDocumentLine->RIFCOMMCLI)
-        {
-          $crmData->rif_commessa_code_c = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->RIFCOMMCLI);
-        }
-        //AGGIU
-        if ($relatedDocumentLine->DESCRIZIONEART && !$relatedDocumentLine->CODART)
-        {
-          $description[] = ConversionHelper::cleanupSuiteCRMFieldValue($relatedDocumentLine->DESCRIZIONEART);
-        }
-      }
-    }
-
-    $crmData->type = 4;//4 = Assistenza Tecnica
-    if (isset($crmData->rif_commessa_code_c))
-    {
-      if (preg_match('#^CTR#', $crmData->rif_commessa_code_c))
-      {
-        $crmData->type = 5;//5 = Assitenza Programmata
-      }
-    }
-
-    //
-    if (count($description))
-    {
-      $crmData->descrizione_problematica_c = implode("\n", $description);
-    }
-
-    $crmData->imp_doc_progressivo_c = $dataElement->PROGRESSIVO;
-
-    $dataElement->crmData = $crmData;
-    return $dataElement;
-  }
-
-
-  /**
-   * @param string $PROGRESSIVO
-   * @return bool|string
-   * @throws SugarCrmRestException
-   */
-  protected function crmLoadRemoteCaseId($PROGRESSIVO)
-  {
-    $crm_id = FALSE;
-    $arguments = [
-      'module_name' => 'Cases',
-      'query' => "cases_cstm.imp_doc_progressivo_c = '" . $PROGRESSIVO . "'",
-      'order_by' => "",
-      'offset' => 0,
-      'select_fields' => ['id'],
-      'link_name_to_fields_array' => [],
-      'max_results' => 2,
-      'deleted' => FALSE,
-      'Favorites' => FALSE,
-    ];
-
-    /** @var \stdClass $result */
-    $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
-
-    if (isset($result) && isset($result->entry_list) && count($result->entry_list) == 1)
-    {
-      /** @var \stdClass $remoteItem */
-      $remoteItem = $result->entry_list[0];
-      $crm_id = $remoteItem->id;
-    }
-
-    return $crm_id;
-  }
-
-
-  protected function crmLoadRelatedAccountData($crmid)
-  {
-    $data = [];
-
-    if ($crmid)
-    {
-      $arguments = [
-        'module_name' => 'Accounts',
-        'id' => $crmid,
-        'select_fields' => ['id', 'shipping_address_city'],
-        'link_name_to_fields_array' => [],
+      $this->checkDocTypeClass($docTypeClassName);
+      $docTypeMap[$docType] = [
+        'doc-type-class-name' => $docTypeClassName,
       ];
-
-      try
-      {
-        /** @var \stdClass $result */
-        $result = $this->sugarCrmRest->comunicate('get_entry', $arguments);
-      } catch(SugarCrmRestException $e)
-      {
-        //bugger
-      }
-
-
-      if (isset($result) && isset($result->entry_list) && count($result->entry_list) == 1)
-      {
-        //$this->log("ACCOUNT DATA RES: " . json_encode($result));
-        /** @var \stdClass $remoteItem */
-        $remoteItem = $result->entry_list[0]->name_value_list;
-        foreach ($arguments['select_fields'] as $fieldName)
-        {
-          if (isset($remoteItem->$fieldName->value))
-          {
-            $data[$fieldName] = $remoteItem->$fieldName->value;
-          }
-        }
-        //$this->log("FOUND REMOTE ACCOUNT: " . json_encode($remoteItem));
-        //$crm_id = $remoteItem->id->value;
-      }
     }
+    //$this->log("DOC TYPE MAP: " . json_encode($docTypeMap));
 
-    return $data;
+    $this->docTypeMap = $docTypeMap;
   }
 
   /**
-   * @param string $CODCLIFOR
-   * @return string
-   * @throws SugarCrmRestException
+   * @param string $docTypeClassName
+   * @throws \Exception
    */
-  protected function crmLoadRelatedAccountId($CODCLIFOR)
+  protected function checkDocTypeClass($docTypeClassName)
   {
-    $crm_id = FALSE;
-
-    $arguments = [
-      'module_name' => 'Accounts',
-      'query' => "",
-      'order_by' => "",
-      'offset' => 0,
-      'select_fields' => ['id'],
-      'link_name_to_fields_array' => [],
-      'max_results' => 2,
-      'deleted' => FALSE,
-      'Favorites' => FALSE,
-    ];
-
-    $codeFieldName = FALSE;
-    if (strtoupper(substr($CODCLIFOR, 0, 1)) == "C")
+    if (!class_exists($docTypeClassName))
     {
-      $codeFieldName = 'imp_metodo_client_code_c';
+      throw new \Exception("Inexistent operation class(" . $docTypeClassName . ")!");
     }
-    else if (strtoupper(substr($CODCLIFOR, 0, 1)) == "F")
+    $reflection = new \ReflectionClass($docTypeClassName);
+    if (!$reflection->implementsInterface('Mekit\Sync\TriggeredOperations\TriggeredOperationInterface'))
     {
-      $codeFieldName = 'imp_metodo_supplier_code_c';
+      throw new \Exception(
+        "Operation class(" . $docTypeClassName . ") does not implement TriggeredOperationInterface!"
+      );
     }
-
-    if ($codeFieldName)
+    if ($reflection->getParentClass()->getName() != 'Mekit\Sync\TriggeredOperations\TriggeredOperation')
     {
-      $codeFieldValue = $CODCLIFOR;
-      $arguments['query'] = "accounts_cstm." . $codeFieldName . " = '" . $codeFieldValue . "'";
-
-
-      try
-      {
-        /** @var \stdClass $result */
-        $result = $this->sugarCrmRest->comunicate('get_entry_list', $arguments);
-      } catch(SugarCrmRestException $e)
-      {
-        //bugger
-      }
-
-
-      if (isset($result) && isset($result->entry_list) && count($result->entry_list) == 1)
-      {
-        /** @var \stdClass $remoteItem */
-        $remoteItem = $result->entry_list[0]->name_value_list;
-        //$this->log("FOUND REMOTE ACCOUNT: " . json_encode($remoteItem));
-        $crm_id = $remoteItem->id->value;
-      }
+      throw new \Exception("Operation class(" . $docTypeClassName . ") does not extend TriggeredOperation!");
     }
-
-    return $crm_id;
   }
 
-  /**
-   * @param string $PROGRESSIVO
-   * @return bool|array
-   */
-  protected function metodoLoadRelatedDocumentLines($PROGRESSIVO)
-  {
-    $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $sql = "SELECT TIPORIGA, CODART, DESCRIZIONEART, NRRIFPARTITA, RIFCOMMCLI FROM IMP.dbo.RIGHEDOCUMENTI WHERE"
-           . " IDTESTA = "
-           . $PROGRESSIVO . " ORDER BY POSIZIONE";
-    try
-    {
-      $st = $db->prepare($sql);
-      $st->execute();
-      $answer = $st->fetchAll(\PDO::FETCH_OBJ);
-    } catch(\Exception $e)
-    {
-      $answer = FALSE;
-    }
-    return $answer;
-  }
 }
