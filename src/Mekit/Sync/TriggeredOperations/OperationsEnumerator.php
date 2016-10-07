@@ -63,9 +63,8 @@ class OperationsEnumerator
       }
       $this->counter++;
       $this->log(str_repeat("-", 80) . "[" . $this->counter . "]");
-      //$this->log("OP[" . $this->counter . "]: " . json_encode($operationElement));
 
-      $op = TriggeredOperation::TR_OP_DELETE;
+      $op = TriggeredOperation::TR_OP_INCREMENT;
 
       try
       {

@@ -45,7 +45,7 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
   {
     $result = FALSE;
 
-    //@todo: TEMP!!!!
+    //@todo: TEMPORARY!!!!
     /*
     if($this->operationElement->param1 != "RAS" && $this->operationElement->id != "11752") {
       return $result;
@@ -184,6 +184,7 @@ class Document extends TriggeredOperation implements TriggeredOperationInterface
     $dbname = strtoupper($this->databaseName);
 
     $sql = "SELECT 
+      CONCAT(TD.PROGRESSIVO, '-', RD.IDRIGA) AS LINEID,
       RD.TIPORIGA, 
       RD.CODART, 
       RD.DESCRIZIONEART, 
