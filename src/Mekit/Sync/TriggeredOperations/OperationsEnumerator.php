@@ -8,6 +8,7 @@
 namespace Mekit\Sync\TriggeredOperations;
 
 use Mekit\Console\Configuration;
+use Mekit\Exceptions\OperatorNotFoundException;
 use Monolog\Logger;
 
 /**
@@ -64,6 +65,7 @@ class OperationsEnumerator
       $this->counter++;
       $this->log(str_repeat("-", 80) . "[" . $this->counter . "]");
 
+      //the default behaviour is to keep operation and increment attempt count on it
       $op = TriggeredOperation::TR_OP_INCREMENT;
 
       try
@@ -71,9 +73,13 @@ class OperationsEnumerator
         $operator = $this->getOperatorInstanceForOperationElement($operationElement);
         $operator->sync();
         $op = $operator->getTaskOnTrigger();
+      } catch(OperatorNotFoundException $e)
+      {
+        $op = TriggeredOperation::TR_OP_DELETE;
+        $this->log("No operator: " . $e->getMessage());
       } catch(\Exception $e)
       {
-        $this->log("ERROR[" . $this->counter . "]: " . $e->getMessage());
+        $this->log($e->getMessage());
       }
 
       $this->executeTaskOnOperationElement($operationElement, $op);
@@ -178,14 +184,14 @@ class OperationsEnumerator
   {
     if (!isset($operationElement->table_name) || empty($operationElement->table_name))
     {
-      throw new \Exception("Column 'table_name' is missing Operation Element");
+      throw new OperatorNotFoundException("Column 'table_name' is missing Operation Element");
     }
     $table_name = $operationElement->table_name;
     //$this->log("Looking for Operator for table: " . $table_name);
 
     if (!array_key_exists($table_name, $this->tableMap))
     {
-      throw new \Exception("Table name($table_name) is not defined in table_map");
+      throw new OperatorNotFoundException("Table name($table_name) is not defined in table_map");
     }
 
     $tableMapItem = $this->tableMap[$table_name];
@@ -219,11 +225,11 @@ class OperationsEnumerator
     $cfg = Configuration::getConfiguration();
     if (!isset($cfg["table-map"]))
     {
-      throw new \Exception("Missing 'table-map' key from configuration file!");
+      throw new OperatorNotFoundException("Missing 'table-map' key from configuration file!");
     }
     if (!is_array($cfg["table-map"]))
     {
-      throw new \Exception("The 'table-map' key in configuration must be an array!");
+      throw new OperatorNotFoundException("The 'table-map' key in configuration must be an array!");
     }
     $tableMap = [];
     foreach ($cfg["table-map"] as $tableName => $operationClassName)
@@ -248,18 +254,20 @@ class OperationsEnumerator
   {
     if (!class_exists($operationClassName))
     {
-      throw new \Exception("Inexistent operation class(" . $operationClassName . ")!");
+      throw new OperatorNotFoundException("Inexistent operation class(" . $operationClassName . ")!");
     }
     $reflection = new \ReflectionClass($operationClassName);
     if (!$reflection->implementsInterface('Mekit\Sync\TriggeredOperations\TriggeredOperationInterface'))
     {
-      throw new \Exception(
+      throw new OperatorNotFoundException(
         "Operation class(" . $operationClassName . ") does not implement TriggeredOperationInterface!"
       );
     }
     if (!$reflection->isSubclassOf('Mekit\Sync\TriggeredOperations\TriggeredOperation'))
     {
-      throw new \Exception("Operation class(" . $operationClassName . ") does not extend TriggeredOperation!");
+      throw new OperatorNotFoundException(
+        "Operation class(" . $operationClassName . ") does not extend TriggeredOperation!"
+      );
     }
   }
 

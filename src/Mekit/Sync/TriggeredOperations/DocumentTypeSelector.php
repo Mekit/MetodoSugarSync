@@ -8,6 +8,7 @@
 namespace Mekit\Sync\TriggeredOperations;
 
 use Mekit\Console\Configuration;
+use Mekit\Exceptions\OperatorNotFoundException;
 use Monolog\Logger;
 
 /**
@@ -46,12 +47,12 @@ class DocumentTypeSelector
   {
     if (!isset($operationElement->param1) || empty($operationElement->param1))
     {
-      throw new \Exception("Column 'param1' is missing on Operation Element");
+      throw new OperatorNotFoundException("Column 'param1' is missing on Operation Element");
     }
     $docType = $operationElement->param1;
     if (!array_key_exists($docType, $this->docTypeMap))
     {
-      throw new \Exception("Document type($docType) is not defined in docTypeMap!");
+      throw new OperatorNotFoundException("Document type($docType) is not defined in docTypeMap!");
     }
 
     $docTypeMapItem = $this->docTypeMap[$docType];
@@ -66,11 +67,11 @@ class DocumentTypeSelector
     $cfg = Configuration::getConfiguration();
     if (!isset($cfg["document-type-map"]))
     {
-      throw new \Exception("Missing 'document-type-map' key from configuration file!");
+      throw new OperatorNotFoundException("Missing 'document-type-map' key from configuration file!");
     }
     if (!is_array($cfg["document-type-map"]))
     {
-      throw new \Exception("The 'document-type-map' key in configuration must be an array!");
+      throw new OperatorNotFoundException("The 'document-type-map' key in configuration must be an array!");
     }
     $docTypeMap = [];
     foreach ($cfg["document-type-map"] as $docType => $docTypeClassName)
@@ -93,18 +94,20 @@ class DocumentTypeSelector
   {
     if (!class_exists($docTypeClassName))
     {
-      throw new \Exception("Inexistent operation class(" . $docTypeClassName . ")!");
+      throw new OperatorNotFoundException("Inexistent operation class(" . $docTypeClassName . ")!");
     }
     $reflection = new \ReflectionClass($docTypeClassName);
     if (!$reflection->implementsInterface('Mekit\Sync\TriggeredOperations\TriggeredOperationInterface'))
     {
-      throw new \Exception(
+      throw new OperatorNotFoundException(
         "Operation class(" . $docTypeClassName . ") does not implement TriggeredOperationInterface!"
       );
     }
     if (!$reflection->isSubclassOf('Mekit\Sync\TriggeredOperations\TriggeredOperation'))
     {
-      throw new \Exception("Operation class(" . $docTypeClassName . ") does not extend TriggeredOperation!");
+      throw new OperatorNotFoundException(
+        "Operation class(" . $docTypeClassName . ") does not extend TriggeredOperation!"
+      );
     }
 
   }
