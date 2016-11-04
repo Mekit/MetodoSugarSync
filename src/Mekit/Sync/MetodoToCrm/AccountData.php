@@ -172,7 +172,10 @@ class AccountData extends Sync implements SyncInterface
       unset($syncItem->id);
 
       //add payload to syncItem
+
       $payload = $this->getLocalItemPayload($cacheItem);
+
+
       if ($payload)
       {
         foreach ($payload as $key => $payloadData)
@@ -216,49 +219,50 @@ class AccountData extends Sync implements SyncInterface
             }
           }
         }
-      }
 
-      //rename VAT NUMBER
-      $syncItem->vat_number_c = $syncItem->partita_iva_c;
-      unset($syncItem->partita_iva_c);
+        //rename VAT NUMBER
+        $syncItem->vat_number_c = $syncItem->partita_iva_c;
+        unset($syncItem->partita_iva_c);
 
-      //reformat date
-      $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+        //reformat date
+        $syncItem->metodo_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
 
-      //additional data
-      $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
-
-
-      $restOperation = "INSERT";
-      if ($crm_id)
-      {
-        $syncItem->id = $crm_id;
-        $restOperation = "UPDATE";
-      }
+        //additional data
+        $syncItem->to_be_profiled_c = FALSE;//"Da profilare"
 
 
-      //create arguments for rest
-      $arguments = [
-        'module_name' => 'Accounts',
-        'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
-      ];
+        $restOperation = "INSERT";
+        if ($crm_id)
+        {
+          $syncItem->id = $crm_id;
+          $restOperation = "UPDATE";
+        }
 
-      $this->log("CRM SYNC ITEM[$restOperation][$crm_id]");
 
-      try
-      {
-        $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-        //$this->log("REMOTE RESULT: " . json_encode($result));
-      } catch(SugarCrmRestException $e)
-      {
-        //go ahead with false silently
-        $this->log("REMOTE ERROR!!! - " . $e->getMessage());
-        //we must remove crm_id from $cacheItem
-        //create fake result
-        $result = new \stdClass();
-        $result->updateFailure = TRUE;
+        //create arguments for rest
+        $arguments = [
+          'module_name' => 'Accounts',
+          'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
+        ];
+
+        $this->log("CRM SYNC ITEM[$restOperation][$crm_id]");
+
+        try
+        {
+          $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
+          //$this->log("REMOTE RESULT: " . json_encode($result));
+        } catch(SugarCrmRestException $e)
+        {
+          //go ahead with false silently
+          $this->log("REMOTE ERROR!!! - " . $e->getMessage());
+          //we must remove crm_id from $cacheItem
+          //create fake result
+          $result = new \stdClass();
+          $result->updateFailure = TRUE;
+        }
       }
     }
+
     return $result;
   }
 
@@ -610,25 +614,31 @@ class AccountData extends Sync implements SyncInterface
   /**
    * @param \stdClass $cacheItem
    * @return array|bool
-   * @throws \Exception
    */
   protected function getLocalItemPayload($cacheItem)
   {
     $answer = FALSE;
 
-    $headData = $this->getLocalItemPayloadHeadData($cacheItem);
-    //$this->log("HEAD DATA: " . json_encode($headData, JSON_PRETTY_PRINT));
-
-    $invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
-    //$this->log("INVOICE DATA: " . json_encode($invoiceData, JSON_PRETTY_PRINT));
-
-    if (is_array($headData))
+    try
     {
-      $answer = $headData;
-      if (is_array($invoiceData))
+      $headData = $this->getLocalItemPayloadHeadData($cacheItem);
+      //$this->log("HEAD DATA: " . json_encode($headData, JSON_PRETTY_PRINT));
+
+      $invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
+      //$this->log("INVOICE DATA: " . json_encode($invoiceData, JSON_PRETTY_PRINT));
+
+      if (is_array($headData))
       {
-        $answer = array_merge($answer, $invoiceData);
+        $answer = $headData;
+        if (is_array($invoiceData))
+        {
+          $answer = array_merge($answer, $invoiceData);
+        }
       }
+
+    } catch(\Exception $e)
+    {
+      $this->log("ERROR GETTING ITEM PAYLOAD: " . $e->getMessage());
     }
 
     //$this->log("PAYLOAD DATA: " . json_encode($answer, JSON_PRETTY_PRINT));
@@ -1140,7 +1150,9 @@ class AccountData extends Sync implements SyncInterface
       $this->localItemStatement = $db->prepare($sql);
       $this->localItemStatement->execute();
     }
+
     $item = $this->localItemStatement->fetch(\PDO::FETCH_OBJ);
+
     if ($item)
     {
       $item->CodiceMetodo = trim($item->CodiceMetodo);
