@@ -631,10 +631,9 @@ class AccountData extends Sync implements SyncInterface
       $headData = $this->getLocalItemPayloadHeadData($cacheItem);
       //$this->log("HEAD DATA: " . json_encode($headData, JSON_PRETTY_PRINT));
 
-      $invoiceData = FALSE;
-      //@todo: TEMPORARY DISABLE - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
-      //$invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
-      //@todo: TEMPORARY DISABLE - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+
+      //$invoiceData = FALSE;
+      $invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
       //$this->log("INVOICE DATA: " . json_encode($invoiceData, JSON_PRETTY_PRINT));
 
       if (is_array($headData))
@@ -708,9 +707,15 @@ class AccountData extends Sync implements SyncInterface
                     FTDATA.F11AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_11_c,
                     FTDATA.F12AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_12_c
                     
-                    FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA                    
+                    FROM [$database].[dbo].[SogCRM_AnagraficaCF_2016_12_31] AS FTDATA                    
                     WHERE FTDATA.CodiceMetodo IN (" . implode(",", $metodoCodes) . ")
                     ";
+
+        //@todo: TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+        // original table: FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA
+
+        //@todo: TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+
         $statement = $db->prepare($sql);
         $statement->execute();
         $itemList = $statement->fetchAll(\PDO::FETCH_ASSOC);
