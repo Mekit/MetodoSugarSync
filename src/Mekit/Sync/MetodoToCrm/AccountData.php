@@ -121,6 +121,7 @@ class AccountData extends Sync implements SyncInterface
       $cacheUpdateItem->id = $cacheItem->id;
       if (isset($remoteItem->updateFailure) && $remoteItem->updateFailure)
       {
+        $this->log("CACHE-STORAGE(failure): resetting last update time");
         //we must remove crm_id and reset crm_last_update_time_c on $cacheItem
         $cacheUpdateItem->crm_id = NULL;
         $oldDate = \DateTime::createFromFormat('Y-m-d H:i:s', "1970-01-01 00:00:00");
@@ -130,6 +131,7 @@ class AccountData extends Sync implements SyncInterface
       {
         $remoteItemIdList = $remoteItem->ids;
         $remoteItemId = $remoteItemIdList[0];
+        $this->log("CACHE-STORAGE(pass): updating timestamp for crmid: " . $remoteItemId);
         $cacheUpdateItem->crm_id = $remoteItemId;
         $now = new \DateTime();
         $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
@@ -250,8 +252,10 @@ class AccountData extends Sync implements SyncInterface
         try
         {
           $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-          //$this->log("REMOTE RESULT: " . json_encode($result));
-        } catch(SugarCrmRestException $e)
+
+          $this->log("REMOTE RESULT: " . json_encode($result));
+
+        } catch(\Exception $e)
         {
           //go ahead with false silently
           $this->log("REMOTE ERROR!!! - " . $e->getMessage());
