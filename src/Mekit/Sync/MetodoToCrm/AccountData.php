@@ -11,6 +11,7 @@ use Mekit\Console\Configuration;
 use Mekit\DbCache\AccountCache;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
+use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 use Monolog\Logger;
@@ -182,7 +183,11 @@ class AccountData extends Sync implements SyncInterface
       {
         foreach ($payload as $key => $payloadData)
         {
-          $syncItem->$key = $payloadData;
+
+          $payloadData = preg_replace('/[^A-Za-z0-9àèéìòù.,;: -_*%&$()@#]/', '*', $payloadData);
+          $syncItem->$key = ConversionHelper::cleanupSuiteCRMFieldValue($payloadData);
+
+          //$syncItem->$key = $payloadData;
 
           //SPECIAL CASES
 
@@ -254,6 +259,7 @@ class AccountData extends Sync implements SyncInterface
           $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
 
           $this->log("REMOTE RESULT: " . json_encode($result));
+
 
         } catch(\Exception $e)
         {
