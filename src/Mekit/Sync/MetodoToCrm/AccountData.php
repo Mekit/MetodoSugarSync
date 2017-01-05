@@ -368,7 +368,7 @@ class AccountData extends Sync implements SyncInterface
     if ($localItem->database == "IMP")
     {
       //if($localItem->CodiceMetodo == "C  4336") {
-      $this->log("CM[IMP]: " . $localItem->CodiceMetodo . " EXPORT: " . $localItem->CrmExportFlag);
+      //$this->log("CM[IMP]: " . $localItem->CodiceMetodo . " EXPORT: " . $localItem->CrmExportFlag);
       //}
     }
 
@@ -483,7 +483,7 @@ class AccountData extends Sync implements SyncInterface
       if (count($candidates) > 1)
       {
         throw new \Exception(
-          "Duplicati per codice metodo(" . $localItem->CodiceMetodo . ") in field_ " . $remoteFieldNameForCodiceMetodo
+          "Duplicati per codice metodo(" . $localItem->CodiceMetodo . ") in field: " . $remoteFieldNameForCodiceMetodo
         );
       }
       if ($candidates)
