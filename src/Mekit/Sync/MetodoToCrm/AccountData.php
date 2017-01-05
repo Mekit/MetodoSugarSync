@@ -631,7 +631,10 @@ class AccountData extends Sync implements SyncInterface
       $headData = $this->getLocalItemPayloadHeadData($cacheItem);
       //$this->log("HEAD DATA: " . json_encode($headData, JSON_PRETTY_PRINT));
 
-      $invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
+      $invoiceData = FALSE;
+      //@todo: TEMPORARY DISABLE - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+      //$invoiceData = $this->getLocalItemPayloadInvoiceData($cacheItem);
+      //@todo: TEMPORARY DISABLE - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
       //$this->log("INVOICE DATA: " . json_encode($invoiceData, JSON_PRETTY_PRINT));
 
       if (is_array($headData))
