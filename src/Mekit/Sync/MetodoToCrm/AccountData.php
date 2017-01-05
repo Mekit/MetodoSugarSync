@@ -185,7 +185,7 @@ class AccountData extends Sync implements SyncInterface
         {
 
           $payloadData = preg_replace('/[^A-Za-z0-9àèéìòù.,;: -_*%&$()@#]/', '*', $payloadData);
-          $syncItem->$key = ConversionHelper::cleanupSuiteCRMFieldValue($payloadData);
+          $syncItem->$key = $payloadData;
 
           //$syncItem->$key = $payloadData;
 
@@ -259,7 +259,10 @@ class AccountData extends Sync implements SyncInterface
           $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
 
           $this->log("REMOTE RESULT: " . json_encode($result));
-
+          if ($result == NULL)
+          {
+            $this->log("ARGUMENTS: " . print_r($arguments, TRUE));
+          }
 
         } catch(\Exception $e)
         {
