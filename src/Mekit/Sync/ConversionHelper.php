@@ -85,6 +85,28 @@ class ConversionHelper
    * @param bool|int $decimals
    * @return string
    */
+  public static function fixNumber($numberString, $decimals = FALSE)
+  {
+    $numberString = ($numberString ? $numberString : '0');
+
+    $numberString = preg_replace('/[^0-9.]/', '', $numberString);
+
+    if ($decimals !== FALSE)
+    {
+      $numberString = number_format((float) $numberString, $decimals);
+    }
+
+    $numberString = str_replace('.', ',', $numberString);
+
+    return $numberString;
+  }
+
+
+  /**
+   * @param string   $numberString
+   * @param bool|int $decimals
+   * @return string
+   */
   public static function fixCurrency($numberString, $decimals = FALSE)
   {
     $numberString = ($numberString ? $numberString : '0');
@@ -95,6 +117,7 @@ class ConversionHelper
     $numberString = str_replace('.', ',', $numberString);
     return $numberString;
   }
+
 
   /**
    * @param string $value

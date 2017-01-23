@@ -11,6 +11,7 @@ use League\Csv\Reader;
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRestException;
+use Mekit\Sync\ConversionHelper;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
@@ -54,6 +55,7 @@ class GenericAccounts extends Sync implements SyncInterface
 
     $lineNumber = 1;
     $FORCE_LIMIT = 1;
+
     while ($csvItem = $this->getCsvLine($lineNumber))
     {
       if (isset($FORCE_LIMIT) && $FORCE_LIMIT && $this->counter >= $FORCE_LIMIT)
@@ -65,10 +67,8 @@ class GenericAccounts extends Sync implements SyncInterface
       $csvItem = $this->fixCsvData($csvItem);
       $this->log("LINE($lineNumber): " . json_encode($csvItem));
 
-      if (isset($options["update-remote"]) && $options["update-remote"])
-      {
-        $this->updateAccount($csvItem);
-      }
+
+      $this->updateAccount($csvItem, $options["update-remote"]);
 
       $lineNumber++;
       $this->counter++;
@@ -89,7 +89,6 @@ class GenericAccounts extends Sync implements SyncInterface
     $csvItem['agente_imp'] = $this->getAgentCodeFor($csvItem["agente_imp"]);
     $csvItem['agente_ex_imp'] = $this->getAgentCodeFor($csvItem["agente_ex_imp"]);
 
-
     $date = \DateTime::createFromFormat('d/m/Y', $csvItem["date_start_rapp"]);
     $formattedDate = $date ? $date->format('Y-m-d') : '';
     $csvItem['date_start_rapp'] = $formattedDate;
@@ -98,15 +97,37 @@ class GenericAccounts extends Sync implements SyncInterface
     $formattedDate = $date ? $date->format('Y-m-d') : '';
     $csvItem['date_last_sleep'] = $formattedDate;
 
+    $csvItem['state_code_imp'] = $this->getStateCode($csvItem["phase_code"]);
+
+    $csvItem['discount_2015'] = ConversionHelper::fixNumber($csvItem["discount_2015"]);
+    $csvItem['discount_2016'] = ConversionHelper::fixNumber($csvItem["discount_2016"]);
+
+    $csvItem['revenue_2015'] = ConversionHelper::fixNumber($csvItem["revenue_2015"]);
+    $csvItem['revenue_2016'] = ConversionHelper::fixNumber($csvItem["revenue_2016"]);
+
+    $csvItem['prev_fatt_10'] = ConversionHelper::fixNumber($csvItem["prev_fatt_10"]);
+    $csvItem['prev_fatt_50'] = ConversionHelper::fixNumber($csvItem["prev_fatt_50"]);
+    $csvItem['prev_fatt_100'] = ConversionHelper::fixNumber($csvItem["prev_fatt_100"]);
+    $csvItem['prev_fatt_tot'] = ConversionHelper::fixNumber($csvItem["prev_fatt_tot"]);
+
+    $csvItem['mean_discount'] = ConversionHelper::fixNumber($csvItem["mean_discount"]);
+
+    $csvItem['contact_tm'] = ucfirst(strtolower($csvItem['contact_tm']));
+
+    $csvItem['metodo_sync'] = ($csvItem['metodo_sync'] == 1);
+
+    $csvItem['state_forced'] = ($csvItem['state_forced'] == 1);
+
 
     return $csvItem;
   }
 
   /**
    * @param array $csvItem
+   * @param bool  $doUpdate
    * @throws \Exception
    */
-  protected function updateAccount($csvItem)
+  protected function updateAccount($csvItem, $doUpdate = FALSE)
   {
     //CSV -> OBJ
     $csv2ObjMap = [
@@ -115,6 +136,26 @@ class GenericAccounts extends Sync implements SyncInterface
       'agente_ex_imp' => 'imp_ex_agent_code_c',
       'date_start_rapp' => 'imp_acc_start_date_c',
       'date_last_sleep' => 'imp_acc_sleep_date_c',
+      'state_code_imp' => 'imp_status_c',
+      'phase_code' => 'imp_status_phase__c',
+      'sector' => 'industry',
+      'discount_2015' => 'imp_discount_2015_c',
+      'discount_2016' => 'imp_discount_2016_c',
+      'revenue_2015' => 'imp_revenue_2015_c',
+      'revenue_2016' => 'imp_revenue_2016_c',
+
+      'prev_fatt_10' => 'imp_prev_di_fatt_10_c',
+      'prev_fatt_50' => 'imp_prev_di_fatt_50_c',
+      'prev_fatt_100' => 'imp_prev_di_fatt_100_c',
+      'prev_fatt_tot' => 'imp_totale_prev_fatt_c',
+
+      'mean_discount' => 'imp_sconto_medio_c',
+
+      'contact_tm' => 'chiamatoperbarbara_c',
+
+      'metodo_sync' => 'imp_sync_as_client_c',
+
+      'state_forced' => 'imp_forced_status_c',
     ];
 
 
@@ -128,28 +169,44 @@ class GenericAccounts extends Sync implements SyncInterface
       $syncItem->$objKey = $csvItem[$csvKey];
     }
 
-
-    //$syncItem->imp_sync_as_client_c = 1;
-
     //create arguments for rest
     $arguments = [
       'module_name' => 'Accounts',
       'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
     ];
 
-    $this->log("CRM SYNC ITEM: " . json_encode($arguments));
+    $this->log("\nCRM SYNC ITEM: " . json_encode($arguments));
 
-    try
+    if ($doUpdate)
     {
-      $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-      $this->log("REMOTE RESULT: " . json_encode($result));
-    } catch(SugarCrmRestException $e)
-    {
-      //go ahead with false silently
-      $this->log("REMOTE ERROR!!! - " . $e->getMessage());
+      try
+      {
+        $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
+        $this->log("REMOTE RESULT: " . json_encode($result));
+      } catch(SugarCrmRestException $e)
+      {
+        //go ahead with false silently
+        $this->log("REMOTE ERROR!!! - " . $e->getMessage());
+      }
     }
   }
 
+
+  /**
+   * @param string $phaseCode like: 2_1
+   * @return string
+   * @throws \Exception
+   */
+  protected function getStateCode($phaseCode)
+  {
+    $parts = explode("_", $phaseCode);
+    if (count($parts) != 2)
+    {
+      throw new \Exception("Invalid Phase code: " . $phaseCode);
+    }
+
+    return $parts[0];
+  }
 
   /**
    * @param string $val
@@ -171,6 +228,7 @@ class GenericAccounts extends Sync implements SyncInterface
       'MEPA(A12)' => 'A12',
       'IMP(A13)' => 'A13',
       'Dario Eutizi (A15)' => 'A15',
+      'Davide Cazzadore(A6)' => 'A6'
     ];
     if (!array_key_exists($val, $agents))
     {
