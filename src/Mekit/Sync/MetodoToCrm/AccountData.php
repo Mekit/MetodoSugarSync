@@ -100,7 +100,10 @@ class AccountData extends Sync implements SyncInterface
     $this->cacheDb->resetItemWalker();
     $this->counters["remote"]["index"] = 0;
 
-    while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC'))
+    $tmpWhere = '';
+    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C    29"';
+
+    while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
@@ -178,6 +181,24 @@ class AccountData extends Sync implements SyncInterface
 
       $payload = $this->getLocalItemPayload($cacheItem);
 
+      $currencyFields = [
+        'fatturato_storico_c',
+        'ft_periodo_attuale_c',
+        'ft_periodo_mobile_c',
+        'ft_anno_meno_uno_c',
+        'mesimobili12_c',
+        'ft_anno_meno_uno_completo_c',
+        'mesi12mobiliannom1_c',
+        'dagenaoggi_c',
+        'stessoanno1_c',
+        'inizioannostesso1_c',
+        'mkt_ft_periodo_attuale_c',
+        'mkt_ft_periodo_mobile_c',
+        'mkt_ft_anno_meno_uno_c',
+        'mkt_mesimobili12_c',
+        'mkt_ft_anno_meno_uno_complet_c',
+        'mkt_mesi12mobiliannom1_c'
+      ];
 
       if ($payload)
       {
@@ -187,7 +208,6 @@ class AccountData extends Sync implements SyncInterface
           $payloadData = preg_replace('/[^A-Za-z0-9àèéìòù.,;: -_*%&$()@#]/', '*', $payloadData);
           $syncItem->$key = $payloadData;
 
-          //$syncItem->$key = $payloadData;
 
           //SPECIAL CASES
 
@@ -223,7 +243,15 @@ class AccountData extends Sync implements SyncInterface
             {
               $syncItem->$customKey = $payloadData;
               unset($syncItem->$key);
+              $key = $customKey;
             }
+          }
+
+
+          // FIX Currency fields
+          if (preg_match('#^fatturato_(thisyear|lastyear)_[0-9]{1,2}_c#', $key) || in_array($key, $currencyFields))
+          {
+            $syncItem->$key = ConversionHelper::fixCurrency($payloadData);
           }
         }
 
@@ -245,7 +273,6 @@ class AccountData extends Sync implements SyncInterface
           $restOperation = "UPDATE";
         }
 
-
         //create arguments for rest
         $arguments = [
           'module_name' => 'Accounts',
@@ -253,6 +280,7 @@ class AccountData extends Sync implements SyncInterface
         ];
 
         $this->log("CRM SYNC ITEM[$restOperation][$crm_id]");
+        //$this->log(print_r($arguments, true));
 
         try
         {
@@ -377,14 +405,6 @@ class AccountData extends Sync implements SyncInterface
     $inversedType = ($localItem->Tipologia == "C" ? "F" : "C");
     $inversedFieldNameForCM = $this->getRemoteFieldNameForCodiceMetodo($localItem->database, $inversedType);
     $inversedFieldNameForCdF = $this->getRemoteFieldNameForClienteDiFatturazione($localItem->database, $inversedType);
-
-    if ($localItem->database == "IMP")
-    {
-      //if($localItem->CodiceMetodo == "C  4336") {
-      //$this->log("CM[IMP]: " . $localItem->CodiceMetodo . " EXPORT: " . $localItem->CrmExportFlag);
-      //}
-    }
-
 
     /** @var array $warnings */
     $warnings = [];

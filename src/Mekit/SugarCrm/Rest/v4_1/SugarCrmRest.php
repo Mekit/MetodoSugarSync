@@ -214,6 +214,8 @@ class SugarCrmRest
     $restArguments = array_merge($restArguments, $arguments);
     $restArguments = json_encode($restArguments);
 
+    //echo("RESTARGUMENTS: " . $restArguments);
+
     $post = array(
       "method" => $method,
       "input_type" => "JSON",

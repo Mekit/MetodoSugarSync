@@ -25,10 +25,19 @@ class CacheDb extends SqliteDb {
         $this->itemWalker = NULL;
     }
 
-    public function getNextItem($orderByColumn = 'metodo_last_update_time_c', $orderDir = 'ASC') {
+  /**
+   * @param string $orderByColumn
+   * @param string $orderDir
+   * @param string $where (complete of WHERE keyword)
+   * @return bool|mixed
+   */
+  public function getNextItem($orderByColumn = 'metodo_last_update_time_c', $orderDir = 'ASC', $where = NULL)
+  {
         $answer = FALSE;
         if (!$this->itemWalker) {
-            $query = "SELECT * FROM " . $this->dataIdentifier . " ORDER BY ${orderByColumn} ${orderDir}";
+          $query = "SELECT * FROM " . $this->dataIdentifier . ($where ? " " . $where : "")
+                   . " ORDER BY ${orderByColumn} ${orderDir}";
+
             $this->itemWalker = $this->db->prepare($query);
             $this->itemWalker->execute();
         }
@@ -37,7 +46,8 @@ class CacheDb extends SqliteDb {
         } catch(\PDOException $e) {
             $this->log(__CLASS__ . " - load item error: " . $e->getMessage());
         }
-        return $answer;
+
+    return $answer;
     }
 
     /**
