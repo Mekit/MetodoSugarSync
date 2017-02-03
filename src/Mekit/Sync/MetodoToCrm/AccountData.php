@@ -108,7 +108,7 @@ class AccountData extends Sync implements SyncInterface
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
       //@todo: re-enable!!!
-      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
     }
 
   }
