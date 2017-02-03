@@ -107,7 +107,8 @@ class AccountData extends Sync implements SyncInterface
     {
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
-      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      //@todo: re-enable!!!
+      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
     }
 
   }
@@ -252,6 +253,16 @@ class AccountData extends Sync implements SyncInterface
           if (preg_match('#^fatturato_(thisyear|lastyear)_[0-9]{1,2}_c#', $key) || in_array($key, $currencyFields))
           {
             $syncItem->$key = ConversionHelper::fixCurrency($payloadData);
+          }
+
+          //FIX PERCENTS
+          if (preg_match('#ft_perc_att_(mob|amu)_c#', $key)
+              || preg_match('#mesimobili12_c#', $key)
+              || preg_match('#mesi12mobiliannom1_c#', $key)
+          )
+          {
+            //$this->log($key);
+            $syncItem->$key = ConversionHelper::fixNumber($payloadData, 2);
           }
         }
 
@@ -905,10 +916,11 @@ class AccountData extends Sync implements SyncInterface
       /*
        * 3 mesi - Periodo attuale
        * -------------------------
-       * totale 3 mesi precedenti al mese corrente
+       * totale 3 mesi precedenti al mese corrente(47,908.08)
        */
       $key = $database == "IMP" ? "ft_periodo_attuale_c" : "mkt_ft_periodo_attuale_c";
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3);
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, -1);//forced for 2016-12-31
       $value_periodo_attuale_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO ATTUALE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_attuale_3);
       $payload[$key] = $value_periodo_attuale_3;
@@ -919,7 +931,8 @@ class AccountData extends Sync implements SyncInterface
        * totale 3 mesi precedenti al periodo attuale
        */
       $key = $database == "IMP" ? "ft_periodo_mobile_c" : "mkt_ft_periodo_mobile_c";
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 3);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 3);
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 2);//forced for 2016-12-31
       $value_periodo_mobile_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO MOBILE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_3);
       $payload[$key] = $value_periodo_mobile_3;
@@ -930,9 +943,11 @@ class AccountData extends Sync implements SyncInterface
        * totale 3 mesi precedenti al mese corrente dell'anno scorso
        */
       $key = $database == "IMP" ? "ft_anno_meno_uno_c" : "mkt_ft_anno_meno_uno_c";
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 12);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 12);
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 11);//forced for 2016-12-31
       $value_periodo_anno_meno_uno_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
-      //$this->log("PERIODO ANNO MENO UNO 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_anno_meno_uno_3);
+      //$this->log("PERIODO ANNO MENO UNO 3 MESI($key): " . json_encode($fields) . " = " .
+      // $value_periodo_anno_meno_uno_3);
       $payload[$key] = $value_periodo_anno_meno_uno_3;
 
       /*
@@ -971,7 +986,8 @@ class AccountData extends Sync implements SyncInterface
        * totale 12 mesi precedenti al mese corrente
        */
       $key = $database == "IMP" ? "mesimobili12_c" : "mkt_mesimobili12_c";
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 12);
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12, -1);//forced for 2016-12-31
       $value_periodo_mobile_12 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO MOBILE 12 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_12);
       $payload[$key] = $value_periodo_mobile_12;
@@ -984,7 +1000,8 @@ class AccountData extends Sync implements SyncInterface
       $key = $database == "IMP" ? "ft_anno_meno_uno_completo_c" : "mkt_ft_anno_meno_uno_complet_c";
       $fields = $this->getInvoiceDataFieldNamesLastYear($database);
       $value_periodo_anno_meno_uno_12 = $this->getInvoiceDataFieldsSum($payload, $fields);
-      //$this->log("PERIODO ANNO MENO UNO 12 MESI($key): " . json_encode($fields) . " = " . $value_periodo_anno_meno_uno_12);
+      //$this->log("PERIODO ANNO MENO UNO 12 MESI($key): " . json_encode($fields) . " = " .
+      //$value_periodo_anno_meno_uno_12);
       $payload[$key] = $value_periodo_anno_meno_uno_12;
 
       /*
@@ -1102,7 +1119,8 @@ class AccountData extends Sync implements SyncInterface
   protected function getInvoiceDataFieldNamesBackwards($database, $length, $offset = 0)
   {
     $answer = [];
-    $now = new \DateTime();
+    //$now = new \DateTime();
+    $now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
     $currMonthNumber = (int) $now->format("n");
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
     $fieldPrefix = $dbPrefix . "_fatturato_";
@@ -1145,8 +1163,10 @@ class AccountData extends Sync implements SyncInterface
   protected function getInvoiceDataFieldNamesFromBeginningOfYear($database, $offset = 0)
   {
     $answer = [];
-    $now = new \DateTime();
-    $currMonthNumber = (int) $now->format("n");
+    //$now = new \DateTime();
+    $now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
+    //$currMonthNumber = (int) $now->format("n");
+    $currMonthNumber = (int) $now->format("n") + 1;//forced for 2016-12-31
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
     $fieldPrefix = $dbPrefix . "_fatturato_";
     for ($m = 1; $m < $currMonthNumber; $m++)
