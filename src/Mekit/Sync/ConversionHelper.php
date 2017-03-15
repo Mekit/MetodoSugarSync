@@ -118,6 +118,16 @@ class ConversionHelper
     return $numberString;
   }
 
+  /**
+   * @param string $value
+   * @return string
+   */
+  public static function cleanupFromUnknownChars($value)
+  {
+    $value = preg_replace('/[^A-Za-z0-9àèéìòù.,;: -_*%&$()@#]/', '*', $value);
+    $value = filter_var($value, FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
+    return $value;
+  }
 
   /**
    * @param string $value

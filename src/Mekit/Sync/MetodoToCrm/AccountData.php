@@ -101,7 +101,7 @@ class AccountData extends Sync implements SyncInterface
     $this->counters["remote"]["index"] = 0;
 
     $tmpWhere = '';
-    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
+    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  5420"';
 
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
@@ -109,7 +109,7 @@ class AccountData extends Sync implements SyncInterface
       $remoteItem = $this->saveRemoteItem($cacheItem);
 
       //@todo: re-enable!!!
-      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
     }
 
   }
@@ -206,10 +206,9 @@ class AccountData extends Sync implements SyncInterface
       {
         foreach ($payload as $key => $payloadData)
         {
-          $payloadData = preg_replace('/[^A-Za-z0-9àèéìòù.,;: -_*%&$()@#]/', '*', $payloadData);
-          $syncItem->$key = $payloadData;
 
-          //SPECIAL CASES
+          $payloadData = ConversionHelper::cleanupFromUnknownChars($payloadData);
+          $syncItem->$key = $payloadData;
 
 
           //CODICE AGENTE (NO SPACES)
