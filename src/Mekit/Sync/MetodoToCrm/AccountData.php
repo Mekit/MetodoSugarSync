@@ -101,14 +101,15 @@ class AccountData extends Sync implements SyncInterface
     $this->counters["remote"]["index"] = 0;
 
     $tmpWhere = '';
-    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C    29"';
+    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
 
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
+
       //@todo: re-enable!!!
-      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
     }
 
   }
@@ -205,12 +206,11 @@ class AccountData extends Sync implements SyncInterface
       {
         foreach ($payload as $key => $payloadData)
         {
-
           $payloadData = preg_replace('/[^A-Za-z0-9àèéìòù.,;: -_*%&$()@#]/', '*', $payloadData);
           $syncItem->$key = $payloadData;
 
-
           //SPECIAL CASES
+
 
           //CODICE AGENTE (NO SPACES)
           if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c']))
@@ -248,7 +248,6 @@ class AccountData extends Sync implements SyncInterface
             }
           }
 
-
           // FIX Currency fields
           if (preg_match('#^fatturato_(thisyear|lastyear)_[0-9]{1,2}_c#', $key) || in_array($key, $currencyFields))
           {
@@ -257,7 +256,7 @@ class AccountData extends Sync implements SyncInterface
 
           //FIX PERCENTS
           if (preg_match('#ft_perc_att_(mob|amu)_c#', $key)
-              || preg_match('#mesimobili12_c#', $key)
+              || preg_match('#inizioannostesso1_c#', $key)
               || preg_match('#mesi12mobiliannom1_c#', $key)
           )
           {
@@ -265,6 +264,10 @@ class AccountData extends Sync implements SyncInterface
             $syncItem->$key = ConversionHelper::fixNumber($payloadData, 2);
           }
         }
+
+        //
+        //$this->log("SYNC ITEM: " . print_r($syncItem, true));
+
 
         //rename VAT NUMBER
         $syncItem->vat_number_c = $syncItem->partita_iva_c;
