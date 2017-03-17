@@ -101,7 +101,7 @@ class AccountData extends Sync implements SyncInterface
     $this->counters["remote"]["index"] = 0;
 
     $tmpWhere = '';
-    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  5420"';
+    $tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
 
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
@@ -109,7 +109,7 @@ class AccountData extends Sync implements SyncInterface
       $remoteItem = $this->saveRemoteItem($cacheItem);
 
       //@todo: re-enable!!!
-      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
     }
 
   }
@@ -158,7 +158,8 @@ class AccountData extends Sync implements SyncInterface
     $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
     $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
-    if ($metodoLastUpdate > $crmLastUpdate)
+    //@todo: REMOVE TRUE!!!
+    if (TRUE || $metodoLastUpdate > $crmLastUpdate)
     {
       $this->log(
         "-----------------------------------------------------------------------------------------"
@@ -753,14 +754,15 @@ class AccountData extends Sync implements SyncInterface
                     FTDATA.F11AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_11_c,
                     FTDATA.F12AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_12_c
                     
-                    FROM [$database].[dbo].[SogCRM_AnagraficaCF_2016_12_31] AS FTDATA                    
+                    FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA
                     WHERE FTDATA.CodiceMetodo IN (" . implode(",", $metodoCodes) . ")
                     ";
 
-        //@todo: TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+        /* @tmp: fixed date */
+        //TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
         // original table: FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA
-
-        //@todo: TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+        // custom table(fixed date): FROM [$database].[dbo].[SogCRM_AnagraficaCF_2016_12_31] AS FTDATA
+        //
 
         $statement = $db->prepare($sql);
         $statement->execute();
@@ -921,11 +923,14 @@ class AccountData extends Sync implements SyncInterface
        * totale 3 mesi precedenti al mese corrente(47,908.08)
        */
       $key = $database == "IMP" ? "ft_periodo_attuale_c" : "mkt_ft_periodo_attuale_c";
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3);
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, -1);//forced for 2016-12-31
+      /* @tmp: fixed date */
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, -1);
+
       $value_periodo_attuale_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO ATTUALE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_attuale_3);
       $payload[$key] = $value_periodo_attuale_3;
+
 
       /*
        * 3 mesi - Periodo mobile
@@ -933,11 +938,14 @@ class AccountData extends Sync implements SyncInterface
        * totale 3 mesi precedenti al periodo attuale
        */
       $key = $database == "IMP" ? "ft_periodo_mobile_c" : "mkt_ft_periodo_mobile_c";
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 3);
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 2);//forced for 2016-12-31
+      /* @tmp: fixed date */
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 3);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 2);
+
       $value_periodo_mobile_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO MOBILE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_3);
       $payload[$key] = $value_periodo_mobile_3;
+
 
       /*
        * 3 mesi - Periodo anno - 1
@@ -945,12 +953,15 @@ class AccountData extends Sync implements SyncInterface
        * totale 3 mesi precedenti al mese corrente dell'anno scorso
        */
       $key = $database == "IMP" ? "ft_anno_meno_uno_c" : "mkt_ft_anno_meno_uno_c";
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 12);
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 11);//forced for 2016-12-31
+      /* @tmp: fixed date */
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 12);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 11);
+
       $value_periodo_anno_meno_uno_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO ANNO MENO UNO 3 MESI($key): " . json_encode($fields) . " = " .
       // $value_periodo_anno_meno_uno_3);
       $payload[$key] = $value_periodo_anno_meno_uno_3;
+
 
       /*
        * 3 mesi - Periodo Attuale / Periodo Mobile (%)
@@ -965,6 +976,7 @@ class AccountData extends Sync implements SyncInterface
       }
       //$this->log("PERCENTUALE ATTUALE SU MOBILE 3 MESI($key): " . " = " . $value_perc_att_mob);
       $payload[$key] = $value_perc_att_mob;
+
 
       /*
        * 3 mesi - Periodo Attuale / Periodo anno - 1 (%)
@@ -988,11 +1000,14 @@ class AccountData extends Sync implements SyncInterface
        * totale 12 mesi precedenti al mese corrente
        */
       $key = $database == "IMP" ? "mesimobili12_c" : "mkt_mesimobili12_c";
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 12);
-      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12, -1);//forced for 2016-12-31
+      /* @tmp: fixed date */
+      $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12);
+      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 12, -1);
+
       $value_periodo_mobile_12 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO MOBILE 12 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_12);
       $payload[$key] = $value_periodo_mobile_12;
+
 
       /*
        * 12 mesi - Anno scorso
@@ -1005,6 +1020,7 @@ class AccountData extends Sync implements SyncInterface
       //$this->log("PERIODO ANNO MENO UNO 12 MESI($key): " . json_encode($fields) . " = " .
       //$value_periodo_anno_meno_uno_12);
       $payload[$key] = $value_periodo_anno_meno_uno_12;
+
 
       /*
        * 12 mesi - Periodo Mobile / Periodo Anno Scorso (%)
@@ -1033,6 +1049,7 @@ class AccountData extends Sync implements SyncInterface
       //$this->log("PERIODO ANNO IN CORSO($key): " . json_encode($fields) . " = " . $value_anno_in_corso_mesi);
       $payload[$key] = $value_anno_in_corso_mesi;
 
+
       /*
        * ANNO SCORSO - Da Gen. a oggi
        * -------------------------
@@ -1043,6 +1060,7 @@ class AccountData extends Sync implements SyncInterface
       $value_anno_scorso_mesi = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO ANNO SCORSO($key): " . json_encode($fields) . " = " . $value_anno_scorso_mesi);
       $payload[$key] = $value_anno_scorso_mesi;
+
 
       /*
        * Rapporto - Anno in corso / Anno Scorso (%)
@@ -1086,32 +1104,9 @@ class AccountData extends Sync implements SyncInterface
    * INVOICE CALC PAYLOAD {
    * "imp_fatturato_storico_c":"2598.6000",
    *
-   * "imp_fatturato_thisyear_1_c":"0.0000",
-   * "imp_fatturato_thisyear_2_c":"0.0000",
-   * "imp_fatturato_thisyear_3_c":"0.0000",
-   * "imp_fatturato_thisyear_4_c":"0.0000",
-   * "imp_fatturato_thisyear_5_c":"0.0000",
-   * "imp_fatturato_thisyear_6_c":"0.0000",
-   * "imp_fatturato_thisyear_7_c":"0.0000",
-   * "imp_fatturato_thisyear_8_c":"0.0000",
-   * "imp_fatturato_thisyear_9_c":"0.0000",
-   * "imp_fatturato_thisyear_10_c":"0.0000",
-   * "imp_fatturato_thisyear_11_c":"0.0000",
-   * "imp_fatturato_thisyear_12_c":"0.0000",
+   * "imp_fatturato_thisyear_1_c":"0.0000" ... 12
    *
-   * "imp_fatturato_lastyear_1_c":"0.0000",
-   * "imp_fatturato_lastyear_2_c":"0.0000",
-   * "imp_fatturato_lastyear_3_c":"0.0000",
-   * "imp_fatturato_lastyear_4_c":"0.0000",
-   * "imp_fatturato_lastyear_5_c":"0.0000",
-   * "imp_fatturato_lastyear_6_c":"0.0000",
-   * "imp_fatturato_lastyear_7_c":"0.0000",
-   * "imp_fatturato_lastyear_8_c":"0.0000",
-   * "imp_fatturato_lastyear_9_c":"0.0000",
-   * "imp_fatturato_lastyear_10_c":"0.0000",
-   * "imp_fatturato_lastyear_11_c":"0.0000",
-   * "imp_fatturato_lastyear_12_c":"0.0000"
-   * }
+   * "imp_fatturato_lastyear_1_c":"0.0000" ... 12
    *
    * @param string $database
    * @param int    $length
@@ -1121,8 +1116,11 @@ class AccountData extends Sync implements SyncInterface
   protected function getInvoiceDataFieldNamesBackwards($database, $length, $offset = 0)
   {
     $answer = [];
-    //$now = new \DateTime();
-    $now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
+
+    /* @tmp: fixed date */
+    $now = new \DateTime();
+    //$now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
+
     $currMonthNumber = (int) $now->format("n");
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
     $fieldPrefix = $dbPrefix . "_fatturato_";
@@ -1165,10 +1163,16 @@ class AccountData extends Sync implements SyncInterface
   protected function getInvoiceDataFieldNamesFromBeginningOfYear($database, $offset = 0)
   {
     $answer = [];
-    //$now = new \DateTime();
-    $now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
+
+    /* @tmp: fixed date */
+    $now = new \DateTime();
+    //$now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
+
+
+    /* @tmp: fixed date */
     //$currMonthNumber = (int) $now->format("n");
-    $currMonthNumber = (int) $now->format("n") + 1;//forced for 2016-12-31
+    $currMonthNumber = (int) $now->format("n") + 1;
+
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
     $fieldPrefix = $dbPrefix . "_fatturato_";
     for ($m = 1; $m < $currMonthNumber; $m++)
