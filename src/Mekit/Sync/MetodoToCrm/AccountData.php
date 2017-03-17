@@ -101,15 +101,14 @@ class AccountData extends Sync implements SyncInterface
     $this->counters["remote"]["index"] = 0;
 
     $tmpWhere = '';
-    $tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
+    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
 
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
       $this->counters["remote"]["index"]++;
       $remoteItem = $this->saveRemoteItem($cacheItem);
 
-      //@todo: re-enable!!!
-      //$this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
+      $this->storeCrmIdForCachedItem($cacheItem, $remoteItem);
     }
 
   }
@@ -158,8 +157,7 @@ class AccountData extends Sync implements SyncInterface
     $metodoLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->metodo_last_update_time_c);
     $crmLastUpdate = \DateTime::createFromFormat($ISO, $cacheItem->crm_last_update_time_c);
 
-    //@todo: REMOVE TRUE!!!
-    if (TRUE || $metodoLastUpdate > $crmLastUpdate)
+    if ($metodoLastUpdate > $crmLastUpdate)
     {
       $this->log(
         "-----------------------------------------------------------------------------------------"
