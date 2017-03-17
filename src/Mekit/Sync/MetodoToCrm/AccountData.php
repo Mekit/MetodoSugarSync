@@ -1168,8 +1168,8 @@ class AccountData extends Sync implements SyncInterface
 
 
     /* @tmp: fixed date */
-    //$currMonthNumber = (int) $now->format("n");
-    $currMonthNumber = (int) $now->format("n") + 1;
+    $currMonthNumber = (int) $now->format("n");
+    //$currMonthNumber = (int) $now->format("n") + 1;
 
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
     $fieldPrefix = $dbPrefix . "_fatturato_";
