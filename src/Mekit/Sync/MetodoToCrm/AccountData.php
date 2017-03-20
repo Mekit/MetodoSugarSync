@@ -1217,7 +1217,7 @@ class AccountData extends Sync implements SyncInterface
                 WHERE (CASE
                      WHEN EXTC.SOGCRM_Esportabile IS NOT NULL THEN EXTC.SOGCRM_Esportabile
                      WHEN EXTF.SOGCRM_Esportabile IS NOT NULL THEN EXTF.SOGCRM_Esportabile
-                     ELSE 1 END) = 0
+                     ELSE 1 END) = 1
                 ORDER BY ACF.CODCONTO ASC
                 ";
 
