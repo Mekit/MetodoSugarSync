@@ -1214,15 +1214,12 @@ class AccountData extends Sync implements SyncInterface
                 INNER JOIN [$database].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$database].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
                 LEFT JOIN [$database].dbo.EXTRACLIENTI AS EXTC ON ACF.CODCONTO = EXTC.CODCONTO
                 LEFT JOIN [$database].dbo.EXTRAFORNITORI AS EXTF ON ACF.CODCONTO = EXTF.CODCONTO
-
+                WHERE (CASE
+                     WHEN EXTC.SOGCRM_Esportabile IS NOT NULL THEN EXTC.SOGCRM_Esportabile
+                     WHEN EXTF.SOGCRM_Esportabile IS NOT NULL THEN EXTF.SOGCRM_Esportabile
+                     ELSE 1 END) = 0
                 ORDER BY ACF.CODCONTO ASC
-                ";//ACF.DATAMODIFICA
-
-      /*
-       * RIMOSSO TEMPORANEAMENTE ESPORTABILE
-       *                 WHERE EXTC.SOGCRM_Esportabile <> 0
-                OR EXTF.SOGCRM_Esportabile <> 0
-       * */
+                ";
 
       $this->localItemStatement = $db->prepare($sql);
       $this->localItemStatement->execute();
