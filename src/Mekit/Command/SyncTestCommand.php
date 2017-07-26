@@ -44,6 +44,7 @@ class SyncTestCommand extends Command implements CommandInterface
     $this->log("Starting command " . static::COMMAND_NAME . "...");
     $this->executeCommand();
     $this->log("Command " . static::COMMAND_NAME . " done.");
+    return TRUE;
   }
 
   /**

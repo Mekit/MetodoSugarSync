@@ -12,6 +12,7 @@ interface SyncInterface {
     /**
      * Main execution method
      * @param array $options
+     * @param array $arguments
      */
-    function execute($options);
+  function execute($options, $arguments);
 }

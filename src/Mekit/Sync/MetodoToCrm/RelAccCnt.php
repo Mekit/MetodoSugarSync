@@ -53,8 +53,10 @@ class RelAccCnt extends Sync implements SyncInterface {
 
     /**
      * @param array $options
+     * @param array $arguments
      */
-    public function execute($options) {
+  public function execute($options, $arguments)
+  {
         //$this->log("EXECUTING..." . json_encode($options));
         if (isset($options["delete-cache"]) && $options["delete-cache"]) {
             $this->cacheDb->removeAll();

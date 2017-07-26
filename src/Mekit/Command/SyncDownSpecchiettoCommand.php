@@ -1,22 +1,23 @@
 <?php
 /**
  * Created by Adam Jakab.
- * Date: 11/02/16
- * Time: 11.51
+ * Date: 25/07/17
+ * Time: 10.06
  */
 
 namespace Mekit\Command;
 
-use Mekit\Sync\CrmToMetodo\AccountData;
+
+use Mekit\Sync\MetodoToCrm\AccountData;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-
-class SyncUpAccountsCommand extends Command implements CommandInterface
+class SyncDownSpecchiettoCommand extends Command implements CommandInterface
 {
-  const COMMAND_NAME = 'sync-up:accounts';
-  const COMMAND_DESCRIPTION = 'Synchronize Accounts CRM -> Metodo';
+  const COMMAND_NAME = 'sync-down:specchietto';
+  const COMMAND_DESCRIPTION = 'Synchronize Specchietto Account Metodo -> CRM';
 
   public function __construct()
   {
@@ -35,7 +36,10 @@ class SyncUpAccountsCommand extends Command implements CommandInterface
         new InputArgument(
           'config_file', InputArgument::REQUIRED, 'The yaml(.yml) configuration file inside the "' . $this->configDir
                                                   . '" subfolder.'
-        )
+        ),
+        new InputArgument(
+          'client-code', InputArgument::OPTIONAL, NULL
+        ),
       ]
     );
   }
@@ -61,7 +65,7 @@ class SyncUpAccountsCommand extends Command implements CommandInterface
    */
   protected function getDataClass()
   {
-    $class = "Mekit\\Sync\\CrmToMetodo\\AccountData";
+    $class = "Mekit\\Sync\\MetodoToCrm\\SpecchiettoData";
     /** @var AccountData $dataClass */
     $dataClass = new $class([$this, 'log']);
     return $dataClass;

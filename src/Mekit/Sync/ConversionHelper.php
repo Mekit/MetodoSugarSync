@@ -41,6 +41,19 @@ class ConversionHelper
     return $value;
   }
 
+
+  public static function checkClientCode($code)
+  {
+    $pattern = '#^C(' . '[0-9]{6}|' . '[\s]{1}[0-9]{5}|' . '[\s]{2}[0-9]{4}|' . '[\s]{3}[0-9]{3}|' . '[\s]{4}[0-9]{2}|'
+               . '[\s]{5}[0-9]{1}' . ')$#';
+    if (!preg_match($pattern, $code))
+    {
+      throw new \Exception("Invalid Client Code! '" . $code . "'");
+    }
+
+    return $code;
+  }
+
   /**
    * @param string $originalCode
    * @param array  $prefixes
