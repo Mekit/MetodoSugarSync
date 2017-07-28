@@ -96,9 +96,10 @@ class ConversionHelper
   /**
    * @param string   $numberString
    * @param bool|int $decimals
+   * @param string   $decimalChar
    * @return string
    */
-  public static function fixNumber($numberString, $decimals = FALSE)
+  public static function fixNumber($numberString, $decimals = FALSE, $decimalChar = ',')
   {
     $numberString = ($numberString ? $numberString : '0');
 
@@ -109,7 +110,10 @@ class ConversionHelper
       $numberString = number_format((float) $numberString, $decimals);
     }
 
-    $numberString = str_replace('.', ',', $numberString);
+    if ($decimalChar != '.')
+    {
+      $numberString = str_replace('.', $decimalChar, $numberString);
+    }
 
     return $numberString;
   }

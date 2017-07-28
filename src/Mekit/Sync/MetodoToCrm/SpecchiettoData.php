@@ -289,9 +289,9 @@ class SpecchiettoData extends Sync implements SyncInterface
         $d = new \DateTime($row["DataUltimoAcq"]);
         $row["DataUltimoAcq"] = $d->format("Y-m-d");
         //
-        $row["TotQtaGest"] = ConversionHelper::fixNumber($row["TotQtaGest"], 2);
-        $row["PrezzoUnitNettoEuroUltimoAcq"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuroUltimoAcq"], 2);
-        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2);
+        $row["TotQtaGest"] = ConversionHelper::fixNumber($row["TotQtaGest"], 2, '.');
+        $row["PrezzoUnitNettoEuroUltimoAcq"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuroUltimoAcq"], 2, '.');
+        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2, '.');
 
         //remove useless
         unset($row["CodCliFor"]);
@@ -335,14 +335,14 @@ class SpecchiettoData extends Sync implements SyncInterface
         $d = new \DateTime($row["DataDoc"]);
         $row["DataDoc"] = $d->format("Y-m-d");
 
-        $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 2);
-        $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 2);
-        $row["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuro"], 2);
-        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2);
-        $row["TotNettoRigaEuro"] = ConversionHelper::fixNumber($row["TotNettoRigaEuro"], 2);
-        $row["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($row["TotNettoRigaEuroRes"], 2);
-        $row["TotRigaListino42"] = ConversionHelper::fixNumber($row["TotRigaListino42"], 2);
-        $row["TotRigaListino42Res"] = ConversionHelper::fixNumber($row["TotRigaListino42Res"], 2);
+        $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 2, '.');
+        $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 2, '.');
+        $row["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuro"], 2, '.');
+        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2, '.');
+        $row["TotNettoRigaEuro"] = ConversionHelper::fixNumber($row["TotNettoRigaEuro"], 2, '.');
+        $row["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($row["TotNettoRigaEuroRes"], 2, '.');
+        $row["TotRigaListino42"] = ConversionHelper::fixNumber($row["TotRigaListino42"], 2, '.');
+        $row["TotRigaListino42Res"] = ConversionHelper::fixNumber($row["TotRigaListino42Res"], 2, '.');
 
         //remove useless
         unset($row["CodCliFor"]);
@@ -388,7 +388,7 @@ class SpecchiettoData extends Sync implements SyncInterface
         $d = new \DateTime($row["DataFattura"]);
         $row["DataFattura"] = $d->format("Y-m-d");
 
-        $row["ImportoScEuro"] = ConversionHelper::fixNumber($row["ImportoScEuro"], 2);
+        $row["ImportoScEuro"] = ConversionHelper::fixNumber($row["ImportoScEuro"], 2, '.');
 
         //remove useless
         unset($row["CodCliForFatt"]);
@@ -444,12 +444,12 @@ class SpecchiettoData extends Sync implements SyncInterface
         $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 0);
         $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 0);
 
-        $row["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuro"], 2);
-        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2);
-        $row["TotNettoRigaEuro"] = ConversionHelper::fixNumber($row["TotNettoRigaEuro"], 2);
-        $row["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($row["TotNettoRigaEuroRes"], 2);
-        $row["TotRigaListino42"] = ConversionHelper::fixNumber($row["TotRigaListino42"], 2);
-        $row["TotRigaListino42Res"] = ConversionHelper::fixNumber($row["TotRigaListino42Res"], 2);
+        $row["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuro"], 2, '.');
+        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2, '.');
+        $row["TotNettoRigaEuro"] = ConversionHelper::fixNumber($row["TotNettoRigaEuro"], 2, '.');
+        $row["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($row["TotNettoRigaEuroRes"], 2, '.');
+        $row["TotRigaListino42"] = ConversionHelper::fixNumber($row["TotRigaListino42"], 2, '.');
+        $row["TotRigaListino42Res"] = ConversionHelper::fixNumber($row["TotRigaListino42Res"], 2, '.');
       }
     }
 
