@@ -112,7 +112,7 @@ class SpecchiettoData extends Sync implements SyncInterface
     $syncItem->name = $this->clientData->generic->Nome1;
     $syncItem->description = '';
     //
-    $syncItem->dati_cliente = json_encode($this->clientData->generic);
+    $syncItem->client_data = json_encode($this->clientData->generic);
     $syncItem->current_month = json_encode($this->clientData->current_month);
     $syncItem->deadlines = json_encode($this->clientData->deadlines);
     $syncItem->products_recent_buys = json_encode($this->clientData->recently_bought_articles);
