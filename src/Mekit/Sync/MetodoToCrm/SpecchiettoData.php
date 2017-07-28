@@ -61,6 +61,8 @@ class SpecchiettoData extends Sync implements SyncInterface
     $this->getGenericData();
     $this->getCurrentMonthData();
     $this->getDeadlinesData();
+    $this->getRecentlyBoughtArticlesData();
+    $this->getRecentlyNotBoughtArticlesData();
 
     $this->log("CLIENT DATA: \n" . print_r($this->clientData, TRUE));
 
@@ -109,19 +111,12 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     $syncItem->name = $this->clientData->generic->Nome1;
     $syncItem->description = '';
-
-    $syncItem->dati_cliente = implode(
-      "\n", [
-      "codice metodo: " . $this->clientData->generic->CodiceMetodo,
-      "cliente di fatturazione: " . $this->clientData->generic->ClienteDiFatturazione,
-      "codice fiscale: " . $this->clientData->generic->CodiceFiscale,
-      "partita iva: " . $this->clientData->generic->PartitaIva,
-    ]
-    );
-
-
-    $syncItem->current_month = $this->clientData->current_month_txt;
-    $syncItem->deadlines = $this->clientData->deadlines_txt;
+    //
+    $syncItem->dati_cliente = json_encode($this->clientData->generic);
+    $syncItem->current_month = json_encode($this->clientData->current_month);
+    $syncItem->deadlines = json_encode($this->clientData->deadlines);
+    $syncItem->products_recent_buys = json_encode($this->clientData->recently_bought_articles);
+    $syncItem->products_recent_non_buys = json_encode($this->clientData->recently_not_bought_articles);
 
 
     //create arguments for rest
@@ -264,6 +259,103 @@ class SpecchiettoData extends Sync implements SyncInterface
   }
 
   /**
+   * (ARTICOLI NON ACQUISTATI RECENTEMENTE)
+   */
+  protected function getRecentlyNotBoughtArticlesData()
+  {
+    $db = Configuration::getDatabaseConnection("SERVER2K8");
+    $sql = "SELECT
+              D.*
+              FROM IMP.dbo.Sog_SpecchiettoOrdiniClientiArticoliNonAcquistatiMesiRecenti AS D
+              WHERE D.CodCliFor = '" . $this->clientCode . "'
+              ORDER BY D.DataUltimoAcq DESC
+              ";
+
+    $statement = $db->prepare($sql);
+    $statement->execute();
+    $rows = $statement->fetchAll();
+
+    if (count($rows))
+    {
+      foreach ($rows as &$row)
+      {
+        //unsetting numeric keys on arrays
+        for ($i = 0; $i < 25; $i++)
+        {
+          unset($row[$i]);
+        }
+
+        //fix
+        $d = new \DateTime($row["DataUltimoAcq"]);
+        $row["DataUltimoAcq"] = $d->format("Y-m-d");
+        //
+        $row["TotQtaGest"] = ConversionHelper::fixNumber($row["TotQtaGest"], 2);
+        $row["PrezzoUnitNettoEuroUltimoAcq"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuroUltimoAcq"], 2);
+        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2);
+
+        //remove useless
+        unset($row["CodCliFor"]);
+        unset($row["DesCliFor"]);
+        unset($row["CodCliForFatt"]);
+        unset($row["DesCliForFatt"]);
+      }
+    }
+
+    $this->clientData->recently_not_bought_articles = $rows;
+  }
+
+  /**
+   * (ARTICOLI ACQUISTATI RECENTEMENTE)
+   */
+  protected function getRecentlyBoughtArticlesData()
+  {
+    $db = Configuration::getDatabaseConnection("SERVER2K8");
+    $sql = "SELECT
+              D.*
+              FROM IMP.dbo.Sog_SpecchiettoOrdiniClientiUltimiMesi AS D
+              WHERE D.CodCliFor = '" . $this->clientCode . "'
+              ORDER BY TotRigaListino42 DESC
+              ";
+
+    $statement = $db->prepare($sql);
+    $statement->execute();
+    $rows = $statement->fetchAll();
+
+    if (count($rows))
+    {
+      foreach ($rows as &$row)
+      {
+        //unsetting numeric keys on arrays
+        for ($i = 0; $i < 25; $i++)
+        {
+          unset($row[$i]);
+        }
+
+        //fix
+        $d = new \DateTime($row["DataDoc"]);
+        $row["DataDoc"] = $d->format("Y-m-d");
+
+        $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 2);
+        $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 2);
+        $row["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuro"], 2);
+        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2);
+        $row["TotNettoRigaEuro"] = ConversionHelper::fixNumber($row["TotNettoRigaEuro"], 2);
+        $row["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($row["TotNettoRigaEuroRes"], 2);
+        $row["TotRigaListino42"] = ConversionHelper::fixNumber($row["TotRigaListino42"], 2);
+        $row["TotRigaListino42Res"] = ConversionHelper::fixNumber($row["TotRigaListino42Res"], 2);
+
+        //remove useless
+        unset($row["CodCliFor"]);
+        unset($row["DesCliFor"]);
+        unset($row["CodCliForFatt"]);
+        unset($row["DesCliForFatt"]);
+      }
+    }
+
+    $this->clientData->recently_bought_articles = $rows;
+  }
+
+  /**
    * Deadlines
    */
   protected function getDeadlinesData()
@@ -277,43 +369,34 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     $statement = $db->prepare($sql);
     $statement->execute();
-    $this->clientData->deadlines = $statement->fetchAll();
+    $rows = $statement->fetchAll();
 
-    if (count($this->clientData->deadlines))
+    if (count($rows))
     {
-      $schiantation = '';
-
-      foreach ($this->clientData->deadlines as &$item)
+      foreach ($rows as &$row)
       {
         //unsetting numeric keys on arrays
         for ($i = 0; $i < 25; $i++)
         {
-          unset($item[$i]);
+          unset($row[$i]);
         }
 
         //fix
-        $d = new \DateTime($item["DataScadenza"]);
-        $item["DataScadenza"] = $d->format("Y-m-d");
+        $d = new \DateTime($row["DataScadenza"]);
+        $row["DataScadenza"] = $d->format("Y-m-d");
 
-        $d = new \DateTime($item["DataFattura"]);
-        $item["DataFattura"] = $d->format("Y-m-d");
+        $d = new \DateTime($row["DataFattura"]);
+        $row["DataFattura"] = $d->format("Y-m-d");
 
-        $item["ImportoScEuro"] = ConversionHelper::fixNumber($item["ImportoScEuro"], 2);
+        $row["ImportoScEuro"] = ConversionHelper::fixNumber($row["ImportoScEuro"], 2);
 
         //remove useless
-        unset($item["CodCliForFatt"]);
-        unset($item["DesCliForFatt"]);
-
-        $schiantation .= implode(" | ", $item) . "\n";
+        unset($row["CodCliForFatt"]);
+        unset($row["DesCliForFatt"]);
       }
-
-      //column headers
-      $itemZero = $this->clientData->deadlines[0];
-      $this->clientData->deadlines_txt .= implode(" | ", array_keys($itemZero)) . "\n";
-      $this->clientData->deadlines_txt .= $schiantation;
-
     }
 
+    $this->clientData->deadlines = $rows;
   }
 
   /**
@@ -340,45 +423,37 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     $statement = $db->prepare($sql);
     $statement->execute();
-    $this->clientData->current_month = $statement->fetchAll();
-    $this->clientData->current_month_txt = "";
+    $rows = $statement->fetchAll();
 
-    if (count($this->clientData->current_month))
+    if (count($rows))
     {
-      $schiantation = '';
 
-      foreach ($this->clientData->current_month as &$item)
+      //unsetting numeric keys on arrays
+      foreach ($rows as &$row)
       {
-        //unsetting numeric keys on arrays
+
         for ($i = 0; $i < 25; $i++)
         {
-          unset($item[$i]);
+          unset($row[$i]);
         }
 
         //fix
-        $d = new \DateTime($item["DataDoc"]);
-        $item["DataDoc"] = $d->format("Y-m-d");
+        $d = new \DateTime($row["DataDoc"]);
+        $row["DataDoc"] = $d->format("Y-m-d");
 
-        $item["QtaGest"] = ConversionHelper::fixNumber($item["QtaGest"], 0);
-        $item["QtaGestRes"] = ConversionHelper::fixNumber($item["QtaGestRes"], 0);
+        $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 0);
+        $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 0);
 
-        $item["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($item["PrezzoUnitNettoEuro"], 2);
-        $item["PrezzoListino42"] = ConversionHelper::fixNumber($item["PrezzoListino42"], 2);
-        $item["TotNettoRigaEuro"] = ConversionHelper::fixNumber($item["TotNettoRigaEuro"], 2);
-        $item["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($item["TotNettoRigaEuroRes"], 2);
-        $item["TotRigaListino42"] = ConversionHelper::fixNumber($item["TotRigaListino42"], 2);
-        $item["TotRigaListino42Res"] = ConversionHelper::fixNumber($item["TotRigaListino42Res"], 2);
-
-
-        $schiantation .= implode(" | ", $item) . "\n";
+        $row["PrezzoUnitNettoEuro"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuro"], 2);
+        $row["PrezzoListino42"] = ConversionHelper::fixNumber($row["PrezzoListino42"], 2);
+        $row["TotNettoRigaEuro"] = ConversionHelper::fixNumber($row["TotNettoRigaEuro"], 2);
+        $row["TotNettoRigaEuroRes"] = ConversionHelper::fixNumber($row["TotNettoRigaEuroRes"], 2);
+        $row["TotRigaListino42"] = ConversionHelper::fixNumber($row["TotRigaListino42"], 2);
+        $row["TotRigaListino42Res"] = ConversionHelper::fixNumber($row["TotRigaListino42Res"], 2);
       }
-
-      //column headers
-      $itemZero = $this->clientData->current_month[0];
-      $this->clientData->current_month_txt .= implode(" | ", array_keys($itemZero)) . "\n";
-      $this->clientData->current_month_txt .= $schiantation;
     }
 
+    $this->clientData->current_month = $rows;
   }
 
   /**
@@ -395,7 +470,8 @@ class SpecchiettoData extends Sync implements SyncInterface
               ACF.DSCCONTO1 AS Nome1,
               ACF.DSCCONTO2 AS Nome2,
               ACF.DATAMODIFICA AS DataDiModifica,
-              ACFR.CODCONTOFATT AS ClienteDiFatturazione
+              ACFR.CODCONTOFATT AS ClienteDiFatturazione,
+              ACFR.CODAGENTE1 AS Agente1
               FROM [$this->dbName].[dbo].[ANAGRAFICACF] AS ACF
               INNER JOIN [$this->dbName].[dbo].[ANAGRAFICARISERVATICF] AS ACFR ON ACF.CODCONTO = ACFR.CODCONTO AND ACFR.ESERCIZIO = (SELECT TOP (1) TE.CODICE FROM [$this->dbName].[dbo].[TABESERCIZI] AS TE ORDER BY TE.CODICE DESC)
               WHERE ACF.CODCONTO = '" . $this->clientCode . "'
@@ -407,8 +483,13 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     if ($item)
     {
+      //fix
+      $d = new \DateTime($item->DataDiModifica);
+      $item->DataDiModifica = $d->format("Y-m-d H:i:s");
+
       $item->CodiceMetodo = trim($item->CodiceMetodo);
       $item->database = $this->dbName;
+
 
       $this->clientData->generic = $item;
     }
