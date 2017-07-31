@@ -10,6 +10,7 @@ namespace Mekit\Sync\MetodoToCrm;
 use Mekit\Console\Configuration;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
 use Mekit\Sync\ConversionHelper;
+use Mekit\DbCache\AccountCache;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
@@ -31,12 +32,16 @@ class SpecchiettoData extends Sync implements SyncInterface
   /** @var  \stdClass */
   protected $clientData;
 
+  /** @var  AccountCache */
+  protected $accountCacheDb;
+
   /**
    * @param callable $logger
    */
   public function __construct($logger)
   {
     parent::__construct($logger);
+    $this->accountCacheDb = new AccountCache('Account', $logger);
     $this->sugarCrmRest = new SugarCrmRest();
   }
 
@@ -51,22 +56,55 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     if (isset($arguments["client-code"]) && $arguments["client-code"])
     {
-      $this->clientCode = ConversionHelper::checkClientCode($arguments["client-code"]);
+      $clientCode = $arguments["client-code"];
+      $this->updateWithClientCode($clientCode);
     }
+    else
+    {
+      $this->updateWithClientCodesFromCache();
+    }
+
+  }
+
+  /**
+   * Execute for all IMP codes present in the cache
+   */
+  protected function updateWithClientCodesFromCache()
+  {
+    $where = 'WHERE imp_metodo_client_code_c IS NOT NULL';
+    while ($cacheItem = $this->accountCacheDb->getNextItem('imp_metodo_client_code_c', 'ASC', $where))
+    {
+      //print_r($cacheItem);
+      if (isset($cacheItem->imp_metodo_client_code_c))
+      {
+        $clientCode = $cacheItem->imp_metodo_client_code_c;
+        $this->updateWithClientCode($clientCode);
+      }
+    }
+  }
+
+  /**
+   * @param string $clientCode
+   * @return bool
+   */
+  protected function updateWithClientCode($clientCode)
+  {
+    $this->clientCode = ConversionHelper::checkClientCode($clientCode);
 
     $this->log("EXECUTING for client code: " . $this->clientCode);
 
     $this->clientData = new \stdClass();
-
     $this->getGenericData();
     $this->getCurrentMonthData();
     $this->getDeadlinesData();
     $this->getRecentlyBoughtArticlesData();
     $this->getRecentlyNotBoughtArticlesData();
+    $this->markNotBoughtArticles();
 
-    $this->log("CLIENT DATA: \n" . print_r($this->clientData, TRUE));
-
+    //$this->log("CLIENT DATA: \n" . print_r($this->clientData, TRUE));
     $res = $this->saveRemoteItem();
+
+    return $res;
   }
 
 
@@ -111,13 +149,12 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     $syncItem->name = $this->clientData->generic->Nome1;
     $syncItem->description = '';
-    //
-    $syncItem->client_data = json_encode($this->clientData->generic);
-    $syncItem->current_month = json_encode($this->clientData->current_month);
-    $syncItem->deadlines = json_encode($this->clientData->deadlines);
-    $syncItem->products_recent_buys = json_encode($this->clientData->recently_bought_articles);
-    $syncItem->products_recent_non_buys = json_encode($this->clientData->recently_not_bought_articles);
 
+    $syncItem->client_data = base64_encode(serialize($this->clientData->generic));
+    $syncItem->current_month = base64_encode(serialize($this->clientData->current_month));
+    $syncItem->deadlines = base64_encode(serialize($this->clientData->deadlines));
+    $syncItem->products_recent_buys = base64_encode(serialize($this->clientData->recently_bought_articles));
+    $syncItem->products_recent_non_buys = base64_encode(serialize($this->clientData->recently_not_bought_articles));
 
     //create arguments for rest
     $arguments = [
@@ -259,6 +296,25 @@ class SpecchiettoData extends Sync implements SyncInterface
   }
 
   /**
+   * We need do mark articles present in recently_bought_articles
+   * if they are also present in recently_not_bought_articles
+   */
+  protected function markNotBoughtArticles()
+  {
+    foreach ($this->clientData->recently_not_bought_articles as $nbArticle)
+    {
+      $nbCode = $nbArticle["CodArt"];
+      foreach ($this->clientData->recently_bought_articles as &$bArticle)
+      {
+        $bCode = $bArticle["CodArt"];
+        $isInNotBoughtList = isset($bArticle["isInNotBoughtList"]) ? $bArticle["isInNotBoughtList"] : 0;
+        $isInNotBoughtList = ($nbCode == $bCode) ? 1 : $isInNotBoughtList;
+        $bArticle["isInNotBoughtList"] = $isInNotBoughtList;
+      }
+    }
+  }
+
+  /**
    * (ARTICOLI NON ACQUISTATI RECENTEMENTE)
    */
   protected function getRecentlyNotBoughtArticlesData()
@@ -365,6 +421,7 @@ class SpecchiettoData extends Sync implements SyncInterface
               D.*
               FROM IMP.dbo.Sog_SpecchiettoOrdiniClientiScadenzeAperte AS D
               WHERE D.CodCliForFatt = '" . $this->clientCode . "'
+              ORDER BY DataScadenza DESC
               ";
 
     $statement = $db->prepare($sql);
@@ -419,6 +476,7 @@ class SpecchiettoData extends Sync implements SyncInterface
               D.TotRigaListino42Res
               FROM IMP.dbo.Sog_SpecchiettoOrdiniClientiMeseInCorso AS D
               WHERE D.CodCliFor = '" . $this->clientCode . "'
+              ORDER BY TotNettoRigaEuro DESC
               ";
 
     $statement = $db->prepare($sql);
@@ -488,8 +546,7 @@ class SpecchiettoData extends Sync implements SyncInterface
       $item->DataDiModifica = $d->format("Y-m-d H:i:s");
 
       $item->CodiceMetodo = trim($item->CodiceMetodo);
-      $item->database = $this->dbName;
-
+      $item->Database = $this->dbName;
 
       $this->clientData->generic = $item;
     }
