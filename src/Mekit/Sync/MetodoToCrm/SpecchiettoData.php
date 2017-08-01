@@ -26,8 +26,8 @@ class SpecchiettoData extends Sync implements SyncInterface
   /** @var string */
   protected $dbName = 'IMP';
 
-  /** @var array */
-  protected $clientCode = 'C  3981';//MEKIT('C  3981')
+  /** @var string */
+  protected $clientCode;
 
   /** @var  \stdClass */
   protected $clientData;
