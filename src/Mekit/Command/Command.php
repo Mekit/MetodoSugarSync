@@ -8,7 +8,9 @@
 namespace Mekit\Command;
 
 use Mekit\Console\Configuration;
+use Monolog\Handler\RotatingFileHandler;
 use Monolog\Handler\StreamHandler;
+use Monolog\Handler\HandlerInterface;
 use Monolog\Logger;
 use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -44,6 +46,7 @@ class Command extends ConsoleCommand
   {
     parent::__construct($name);
   }
+
 
   protected function _execute(InputInterface $input, OutputInterface $output)
   {
@@ -86,12 +89,24 @@ class Command extends ConsoleCommand
       $logFilePrefix = (isset($cfg['global']['log_file_prefix'])
                         && $cfg['global']['log_file_prefix'] ? $cfg['global']['log_file_prefix'] : "");
       $this->logger = new Logger("file_logger");
+
+
       //LOG HANDLER: FILE
-      $today = new \DateTime();
-      $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . $logFilePrefix
-                     . $today->format("Y-m-d") . '.txt';
-      $logToFileHandler = new StreamHandler($logFilePath, Logger::INFO);
-      $this->logger->pushHandler($logToFileHandler);
+      //      $today = new \DateTime();
+      //      $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . $logFilePrefix
+      //                     . $today->format("Y-m-d") . '.txt';
+      //
+      //      $logToFileHandler = new StreamHandler($logFilePath, Logger::INFO);
+
+
+      //LOG HANDLER: ROTATING FILE
+      $logFilePath = PROJECT_ROOT . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . $logFilePrefix . '.log';
+      $rotatingFileHandler = new RotatingFileHandler($logFilePath, 3, Logger::INFO);
+
+
+      //ADD THE HANDLER
+      $this->logger->pushHandler($rotatingFileHandler);
+
       //
       //IF YOU WANT MAILING - ENABLE THIS
       //LOG HANDLER: MAIL
