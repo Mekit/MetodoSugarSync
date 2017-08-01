@@ -8,9 +8,9 @@
 namespace Mekit\Sync\MetodoToCrm;
 
 use Mekit\Console\Configuration;
+use Mekit\DbCache\AccountCache;
 use Mekit\SugarCrm\Rest\v4_1\SugarCrmRest;
 use Mekit\Sync\ConversionHelper;
-use Mekit\DbCache\AccountCache;
 use Mekit\Sync\Sync;
 use Mekit\Sync\SyncInterface;
 
@@ -71,15 +71,34 @@ class SpecchiettoData extends Sync implements SyncInterface
    */
   protected function updateWithClientCodesFromCache()
   {
+    $hasMore = TRUE;
+    $codes = [];
     $where = 'WHERE imp_metodo_client_code_c IS NOT NULL';
-    while ($cacheItem = $this->accountCacheDb->getNextItem('imp_metodo_client_code_c', 'ASC', $where))
+
+    while ($hasMore)
     {
-      //print_r($cacheItem);
-      if (isset($cacheItem->imp_metodo_client_code_c))
+      try
       {
-        $clientCode = $cacheItem->imp_metodo_client_code_c;
-        $this->updateWithClientCode($clientCode);
+        $cacheItem = $this->accountCacheDb->getNextItem('imp_metodo_client_code_c', 'ASC', $where);
+        if ($cacheItem && isset($cacheItem->imp_metodo_client_code_c))
+        {
+          $codes[] = $cacheItem->imp_metodo_client_code_c;
+        }
+        else
+        {
+          $hasMore = FALSE;
+        }
+      } catch(\Exception $e)
+      {
+        //no problem - we'll do it next time
       }
+    }
+
+    $this->log("Found number of client codes: " . count($codes));
+
+    while ($clientCode = array_pop($codes))
+    {
+      $this->updateWithClientCode($clientCode);
     }
   }
 
@@ -89,20 +108,27 @@ class SpecchiettoData extends Sync implements SyncInterface
    */
   protected function updateWithClientCode($clientCode)
   {
-    $this->clientCode = ConversionHelper::checkClientCode($clientCode);
+    try
+    {
+      $this->clientCode = ConversionHelper::checkClientCode($clientCode);
 
-    $this->log("EXECUTING for client code: " . $this->clientCode);
+      $this->log("Updating for client code: '" . $this->clientCode . "'");
 
-    $this->clientData = new \stdClass();
-    $this->getGenericData();
-    $this->getCurrentMonthData();
-    $this->getDeadlinesData();
-    $this->getRecentlyBoughtArticlesData();
-    $this->getRecentlyNotBoughtArticlesData();
-    $this->markNotBoughtArticles();
+      $this->clientData = new \stdClass();
+      $this->getGenericData();
+      $this->getCurrentMonthData();
+      $this->getDeadlinesData();
+      $this->getRecentlyBoughtArticlesData();
+      $this->getRecentlyNotBoughtArticlesData();
+      $this->markNotBoughtArticles();
 
-    //$this->log("CLIENT DATA: \n" . print_r($this->clientData, TRUE));
-    $res = $this->saveRemoteItem();
+      //$this->log("CLIENT DATA: \n" . print_r($this->clientData, TRUE));
+      $res = $this->saveRemoteItem();
+    } catch(\Exception $e)
+    {
+      $this->log("ERROR(updateWithClientCode): " . $e->getMessage());
+      $res = FALSE;
+    }
 
     return $res;
   }
@@ -162,7 +188,7 @@ class SpecchiettoData extends Sync implements SyncInterface
       'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
     ];
 
-    $this->log("CRM SYNC ITEM[$restOperation][$extra_id]");
+    //$this->log("CRM SYNC ITEM[$restOperation][$extra_id]");
     //$this->log("ARGS:\n" . print_r($arguments, true));
 
     try
