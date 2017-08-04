@@ -379,7 +379,7 @@ class SpecchiettoData extends Sync implements SyncInterface
               D.*
               FROM IMP.dbo.Sog_SpecchiettoOrdiniClientiUltimiMesi AS D
               WHERE D.CodCliFor = '" . $this->clientCode . "'
-              ORDER BY TotRigaListino42 DESC
+              ORDER BY DataDoc DESC
               ";
 
     $statement = $db->prepare($sql);
