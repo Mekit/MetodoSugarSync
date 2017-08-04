@@ -94,6 +94,8 @@ class SpecchiettoData extends Sync implements SyncInterface
       }
     }
 
+    $codes = array_unique($codes);
+
     $this->log("Found number of client codes: " . count($codes));
 
     while ($clientCode = array_pop($codes))
