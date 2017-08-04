@@ -161,8 +161,8 @@ class SpecchiettoData extends Sync implements SyncInterface
       return $result;
     }
 
-    //$this->log("Account ID: " . $account_id);
-    //$this->log("Extra ID: " . $extra_id);
+    $this->log("Account ID: " . $account_id);
+    $this->log("Extra ID: " . $extra_id);
 
     $syncItem = new \stdClass();
 
@@ -175,6 +175,7 @@ class SpecchiettoData extends Sync implements SyncInterface
 
     $syncItem->name = $this->clientData->generic->Nome1;
     $syncItem->description = '';
+    $syncItem->assigned_user_id = 1;
 
     $syncItem->client_data = base64_encode(serialize($this->clientData->generic));
     $syncItem->current_month = base64_encode(serialize($this->clientData->current_month));
@@ -568,7 +569,8 @@ class SpecchiettoData extends Sync implements SyncInterface
     if ($item)
     {
       //fix
-      $d = new \DateTime($item->DataDiModifica);
+      //$d = new \DateTime($item->DataDiModifica);
+      $d = new \DateTime();
       $item->DataDiModifica = $d->format("Y-m-d H:i:s");
 
       $item->CodiceMetodo = trim($item->CodiceMetodo);
