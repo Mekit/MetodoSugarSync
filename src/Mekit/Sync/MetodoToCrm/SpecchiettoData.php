@@ -122,7 +122,6 @@ class SpecchiettoData extends Sync implements SyncInterface
       $this->getDeadlinesData();
       $this->getRecentlyBoughtArticlesData();
       $this->getRecentlyNotBoughtArticlesData();
-      $this->markNotBoughtArticles();
 
       //$this->log("CLIENT DATA: \n" . print_r($this->clientData, TRUE));
       $res = $this->saveRemoteItem();
@@ -163,8 +162,8 @@ class SpecchiettoData extends Sync implements SyncInterface
       return $result;
     }
 
-    $this->log("Account ID: " . $account_id);
-    $this->log("Extra ID: " . $extra_id);
+    //$this->log("Account ID: " . $account_id);
+    //$this->log("Extra ID: " . $extra_id);
 
     $syncItem = new \stdClass();
 
@@ -322,25 +321,6 @@ class SpecchiettoData extends Sync implements SyncInterface
     }
 
     return $answer;
-  }
-
-  /**
-   * We need do mark articles present in recently_bought_articles
-   * if they are also present in recently_not_bought_articles
-   */
-  protected function markNotBoughtArticles()
-  {
-    foreach ($this->clientData->recently_not_bought_articles as $nbArticle)
-    {
-      $nbCode = $nbArticle["CodArt"];
-      foreach ($this->clientData->recently_bought_articles as &$bArticle)
-      {
-        $bCode = $bArticle["CodArt"];
-        $isInNotBoughtList = isset($bArticle["isInNotBoughtList"]) ? $bArticle["isInNotBoughtList"] : 0;
-        $isInNotBoughtList = ($nbCode == $bCode) ? 1 : $isInNotBoughtList;
-        $bArticle["isInNotBoughtList"] = $isInNotBoughtList;
-      }
-    }
   }
 
   /**
