@@ -372,7 +372,7 @@ class SpecchiettoData extends Sync implements SyncInterface
 
         //fix
         $d = new \DateTime($row["DataUltimoAcq"]);
-        $row["DataUltimoAcq"] = $d->format("Y-m-d");
+        $row["DataUltimoAcq"] = $d->format("d/m/Y");
         //
         $row["TotQtaGest"] = ConversionHelper::fixNumber($row["TotQtaGest"], 2, '.');
         $row["PrezzoUnitNettoEuroUltimoAcq"] = ConversionHelper::fixNumber($row["PrezzoUnitNettoEuroUltimoAcq"], 2, '.');
@@ -418,7 +418,7 @@ class SpecchiettoData extends Sync implements SyncInterface
 
         //fix
         $d = new \DateTime($row["DataDoc"]);
-        $row["DataDoc"] = $d->format("Y-m-d");
+        $row["DataDoc"] = $d->format("d/m/Y");
 
         $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 2, '.');
         $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 2, '.');
@@ -469,10 +469,10 @@ class SpecchiettoData extends Sync implements SyncInterface
 
         //fix
         $d = new \DateTime($row["DataScadenza"]);
-        $row["DataScadenza"] = $d->format("Y-m-d");
+        $row["DataScadenza"] = $d->format("d/m/Y");
 
         $d = new \DateTime($row["DataFattura"]);
-        $row["DataFattura"] = $d->format("Y-m-d");
+        $row["DataFattura"] = $d->format("d/m/Y");
 
         $row["ImportoScEuro"] = ConversionHelper::fixNumber($row["ImportoScEuro"], 2, '.');
 
@@ -526,7 +526,7 @@ class SpecchiettoData extends Sync implements SyncInterface
 
         //fix
         $d = new \DateTime($row["DataDoc"]);
-        $row["DataDoc"] = $d->format("Y-m-d");
+        $row["DataDoc"] = $d->format("d/m/Y");
 
         $row["QtaGest"] = ConversionHelper::fixNumber($row["QtaGest"], 0);
         $row["QtaGestRes"] = ConversionHelper::fixNumber($row["QtaGestRes"], 0);
@@ -573,7 +573,8 @@ class SpecchiettoData extends Sync implements SyncInterface
       //fix
       //$d = new \DateTime($item->DataDiModifica);
       $d = new \DateTime();
-      $item->DataDiModifica = $d->format("Y-m-d H:i:s");
+      //$item->DataDiModifica = $d->format("Y-m-d H:i:s");
+      $item->DataDiModifica = $d->format("d/m/Y H:i:s");
 
       $item->CodiceMetodo = trim($item->CodiceMetodo);
       $item->Database = $this->dbName;
