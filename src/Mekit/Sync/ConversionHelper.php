@@ -103,7 +103,7 @@ class ConversionHelper
   {
     $numberString = ($numberString ? $numberString : '0');
 
-    $numberString = preg_replace('/[^0-9.]/', '', $numberString);
+    $numberString = preg_replace('/[^0-9.-]/', '', $numberString);
 
     if ($decimals !== FALSE)
     {

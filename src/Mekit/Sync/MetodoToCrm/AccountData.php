@@ -137,7 +137,7 @@ class AccountData extends Sync implements SyncInterface
       {
         $remoteItemIdList = $remoteItem->ids;
         $remoteItemId = $remoteItemIdList[0];
-        $this->log("CACHE-STORAGE(pass): updating timestamp for crmid: " . $remoteItemId);
+        //$this->log("CACHE-STORAGE(pass): updating timestamp for crmid: " . $remoteItemId);
         $cacheUpdateItem->crm_id = $remoteItemId;
         $now = new \DateTime();
         $cacheUpdateItem->crm_last_update_time_c = $now->format("c");
@@ -183,6 +183,8 @@ class AccountData extends Sync implements SyncInterface
 
       $payload = $this->getLocalItemPayload($cacheItem);
 
+      //$this->log("PAYLOAD: " . print_r($payload, true));
+
       $currencyFields = [
         'fatturato_storico_c',
         'ft_periodo_attuale_c',
@@ -208,8 +210,8 @@ class AccountData extends Sync implements SyncInterface
         {
 
           $payloadData = ConversionHelper::cleanupFromUnknownChars($payloadData);
-          $syncItem->$key = $payloadData;
 
+          $syncItem->$key = $payloadData;
 
           //CODICE AGENTE (NO SPACES)
           if (in_array($key, ['imp_agent_code_c', 'mekit_agent_code_c']))
@@ -299,7 +301,7 @@ class AccountData extends Sync implements SyncInterface
         {
           $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
 
-          $this->log("REMOTE RESULT: " . json_encode($result));
+          //$this->log("REMOTE RESULT: " . json_encode($result));
           if ($result == NULL)
           {
             $this->log("ARGUMENTS: " . print_r($arguments, TRUE));
@@ -973,7 +975,9 @@ class AccountData extends Sync implements SyncInterface
       {
         $value_perc_att_mob = 100 * ($value_periodo_attuale_3 - $value_periodo_mobile_3) / $value_periodo_mobile_3;
       }
+
       //$this->log("PERCENTUALE ATTUALE SU MOBILE 3 MESI($key): " . " = " . $value_perc_att_mob);
+
       $payload[$key] = $value_perc_att_mob;
 
 
