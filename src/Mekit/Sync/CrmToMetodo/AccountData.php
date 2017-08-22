@@ -81,6 +81,7 @@ class AccountData extends Sync implements SyncInterface
   protected function updateMetodoFromCrm()
   {
     $this->counters["remote"]["index"] = 0;
+
     while ($remoteItem = $this->getNextRemoteItem())
     {
       $this->counters["remote"]["index"]++;
@@ -108,7 +109,8 @@ class AccountData extends Sync implements SyncInterface
       . $this->counters["remote"]["index"]
     );
     $this->log("REMOTE ITEM: " . json_encode($remoteItem));
-    $this->log("");
+    //$this->log("");
+
     $operations = $this->getOperationsForRemoteItem($remoteItem);
     if (count($operations))
     {
@@ -116,13 +118,13 @@ class AccountData extends Sync implements SyncInterface
       {
         $operation = $this->saveRemoteItemInMetodo($remoteItem, $operation);
         $this->log("OPERATION(AFTER EXECUTION): " . json_encode($operation));
-        $this->log("");
+        //$this->log("");
       }
       //operations array has been modified with result of save execution in 'success' key
       //if true -> we need to push back the new CODES to CRM and UNSET the flags for sync
       $this->updateRemoteItemWithOperationData($remoteItem, $operations);
     }
-    $this->log("");
+    //$this->log("");
   }
 
   /**
@@ -165,6 +167,7 @@ class AccountData extends Sync implements SyncInterface
         'module_name' => 'Accounts',
         'name_value_list' => $nameValueList
       ];
+      //$this->log("Crm Update args: " . print_r($nameValueList, true));
       $result = $this->sugarCrmRest->comunicate('set_entry', $arguments);
       $this->log("Crm Update Result: " . json_encode($result));
     }
@@ -345,16 +348,37 @@ class AccountData extends Sync implements SyncInterface
         && count($remoteItem->email_addresses)
     )
     {
-      /** @var \stdClass $mailAddressObj */
+      /** @var \stdClass $mailAddressObj
+       *
+       * [0] => stdClass Object
+       * (
+       * [email_address] => BAD@icsbruino.it
+       * [invalid_email] => 1
+       * [opt_out] => 1
+       * )
+       */
+      // VALID + OPT IN
       foreach ($remoteItem->email_addresses as $mailAddressObj)
       {
-        if ($mailAddressObj->primary_address)
+        if ($mailAddressObj->invalid_email == 0 && $mailAddressObj->opt_out == 0)
         {
-          //looks like it is not set by crm
           $primaryEmailAddress = $mailAddressObj->email_address;
           break;
         }
       }
+      // VALID
+      if (empty($primaryEmailAddress))
+      {
+        foreach ($remoteItem->email_addresses as $mailAddressObj)
+        {
+          if ($mailAddressObj->invalid_email == 0)
+          {
+            $primaryEmailAddress = $mailAddressObj->email_address;
+            break;
+          }
+        }
+      }
+      // ANY (FIRST)
       if (empty($primaryEmailAddress))
       {
         $primaryEmailAddress = $remoteItem->email_addresses[0]->email_address;
@@ -641,7 +665,10 @@ class AccountData extends Sync implements SyncInterface
         'date_modified'
       ],
       'link_name_to_fields_array' => [
-        ['name' => 'email_addresses', 'value' => ['email_address', 'opt_out', 'primary_address']]
+        [
+          'name' => 'email_addresses',
+          'value' => ['email_address', 'invalid_email', 'opt_out']
+        ]
       ],
       'max_results' => 1,
       'deleted' => FALSE,
