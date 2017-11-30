@@ -141,6 +141,8 @@ class OFC extends Document
       //modify sync item here
       $crmData->metodo_database_c = $this->databaseName;
 
+      //document type (aos_quote_type)
+      $crmData->quote_type = 'ofc';
 
       $crmData->metodo_id_head_c = $dataElement->PROGRESSIVO;
       $crmData->document_number_c = $dataElement->NUMERODOC;
