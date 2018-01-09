@@ -43,6 +43,7 @@ class AccountData extends Sync implements SyncInterface
   protected $counters = [];
 
 
+
   /**
    * @param callable $logger
    */
@@ -112,7 +113,7 @@ class AccountData extends Sync implements SyncInterface
     $this->counters["remote"]["index"] = 0;
 
     $tmpWhere = '';
-    $tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
+    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
 
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
