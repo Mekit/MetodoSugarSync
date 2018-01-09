@@ -18,6 +18,15 @@ use Monolog\Logger;
 
 class AccountData extends Sync implements SyncInterface
 {
+  /* @tmp: fixed date */
+  /*
+   * All'inizio dell'anno nuovo vogliamo ancora vedere i fatturati se come fosse l'ultimo giorno dell'anno precedente
+   */
+  const use_fixed_date = TRUE;
+  const fixed_date_value = "2017-12-31";
+  const fixed_date_db_view_name = "SogCRM_AnagraficaCF_2017_12_31";
+
+
   /** @var callable */
   protected $logger;
 
@@ -32,6 +41,7 @@ class AccountData extends Sync implements SyncInterface
 
   /** @var array */
   protected $counters = [];
+
 
   /**
    * @param callable $logger
@@ -102,7 +112,7 @@ class AccountData extends Sync implements SyncInterface
     $this->counters["remote"]["index"] = 0;
 
     $tmpWhere = '';
-    //$tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
+    $tmpWhere = 'WHERE imp_metodo_client_code_c = "C  1030"';
 
     while ($cacheItem = $this->cacheDb->getNextItem('metodo_last_update_time_c', 'DESC', $tmpWhere))
     {
@@ -726,6 +736,13 @@ class AccountData extends Sync implements SyncInterface
       }
       if (count($metodoCodes))
       {
+        /* @tmp: fixed date */
+        //TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
+        // original table: FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA
+        // custom table(fixed date): FROM [$database].[dbo].[SogCRM_AnagraficaCF_2017_12_31] AS FTDATA
+        //
+        $viewName = self::use_fixed_date ? self::fixed_date_db_view_name : "SogCRM_AnagraficaCF";
+
         $sql = "SELECT
                     FTDATA.CodiceMetodo,
                     FTDATA.F0 AS " . strtolower($database) . "_fatturato_storico_c,
@@ -755,15 +772,10 @@ class AccountData extends Sync implements SyncInterface
                     FTDATA.F11AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_11_c,
                     FTDATA.F12AnnoPrec AS " . strtolower($database) . "_fatturato_lastyear_12_c
                     
-                    FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA
+                    FROM [$database].[dbo].[$viewName] AS FTDATA
+                    
                     WHERE FTDATA.CodiceMetodo IN (" . implode(",", $metodoCodes) . ")
                     ";
-
-        /* @tmp: fixed date */
-        //TEMPORARY - FOR JANUARY 2017 - MUST FIX INVOICE DATA DECEMBER - CUSTOM LOGIC VITO
-        // original table: FROM [$database].[dbo].[SogCRM_AnagraficaCF] AS FTDATA
-        // custom table(fixed date): FROM [$database].[dbo].[SogCRM_AnagraficaCF_2016_12_31] AS FTDATA
-        //
 
         $statement = $db->prepare($sql);
         $statement->execute();
@@ -926,7 +938,10 @@ class AccountData extends Sync implements SyncInterface
       $key = $database == "IMP" ? "ft_periodo_attuale_c" : "mkt_ft_periodo_attuale_c";
       /* @tmp: fixed date */
       $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3);
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, -1);
+      if (self::use_fixed_date)
+      {
+        $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, -1);
+      }
 
       $value_periodo_attuale_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO ATTUALE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_attuale_3);
@@ -941,7 +956,10 @@ class AccountData extends Sync implements SyncInterface
       $key = $database == "IMP" ? "ft_periodo_mobile_c" : "mkt_ft_periodo_mobile_c";
       /* @tmp: fixed date */
       $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 3);
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 2);
+      if (self::use_fixed_date)
+      {
+        $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 2);
+      }
 
       $value_periodo_mobile_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO MOBILE 3 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_3);
@@ -956,7 +974,10 @@ class AccountData extends Sync implements SyncInterface
       $key = $database == "IMP" ? "ft_anno_meno_uno_c" : "mkt_ft_anno_meno_uno_c";
       /* @tmp: fixed date */
       $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 12);
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 11);
+      if (self::use_fixed_date)
+      {
+        $fields = $this->getInvoiceDataFieldNamesBackwards($database, 3, 11);
+      }
 
       $value_periodo_anno_meno_uno_3 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO ANNO MENO UNO 3 MESI($key): " . json_encode($fields) . " = " .
@@ -1005,7 +1026,10 @@ class AccountData extends Sync implements SyncInterface
       $key = $database == "IMP" ? "mesimobili12_c" : "mkt_mesimobili12_c";
       /* @tmp: fixed date */
       $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12);
-      //$fields = $this->getInvoiceDataFieldNamesBackwards($database, 12, -1);
+      if (self::use_fixed_date)
+      {
+        $fields = $this->getInvoiceDataFieldNamesBackwards($database, 12, -1);
+      }
 
       $value_periodo_mobile_12 = $this->getInvoiceDataFieldsSum($payload, $fields);
       //$this->log("PERIODO MOBILE 12 MESI($key): " . json_encode($fields) . " = " . $value_periodo_mobile_12);
@@ -1122,7 +1146,10 @@ class AccountData extends Sync implements SyncInterface
 
     /* @tmp: fixed date */
     $now = new \DateTime();
-    //$now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
+    if (self::use_fixed_date)
+    {
+      $now = \DateTime::createFromFormat('Y-m-d', self::fixed_date_value);
+    }
 
     $currMonthNumber = (int) $now->format("n");
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
@@ -1169,12 +1196,17 @@ class AccountData extends Sync implements SyncInterface
 
     /* @tmp: fixed date */
     $now = new \DateTime();
-    //$now = \DateTime::createFromFormat('Y-m-d', '2016-12-31');
-
+    if (self::use_fixed_date)
+    {
+      $now = \DateTime::createFromFormat('Y-m-d', self::fixed_date_value);
+    }
 
     /* @tmp: fixed date */
     $currMonthNumber = (int) $now->format("n");
-    //$currMonthNumber = (int) $now->format("n") + 1;
+    if (self::use_fixed_date)
+    {
+      $currMonthNumber++;
+    }
 
     $dbPrefix = strtolower($database) == "imp" ? "imp" : "mkt";
     $fieldPrefix = $dbPrefix . "_fatturato_";
