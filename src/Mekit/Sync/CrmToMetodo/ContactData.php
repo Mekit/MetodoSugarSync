@@ -138,19 +138,19 @@ class ContactData extends Sync implements SyncInterface {
 
         //
         $tableData = [
-            'IdContatto' => $operationData['CODCONTO'],
-            'Titolo' => $remoteItem->salutation,
-            'Nome' => $remoteItem->first_name,
-            'Cognome' => $remoteItem->last_name,
-            'Cellulare' => $remoteItem->phone_mobile,
-            'TelUfficio' => $remoteItem->phone_work,
-            'TelCasa' => $remoteItem->phone_home,
-            'Fax' => $remoteItem->phone_fax,
-            'Email' => $remoteItem->email1,
-            'Note' => $remoteItem->description,
-            //
-            'UtenteModifica' => $this->METODO_UTENTEMODIFICA,
-            'DataModifica' => $now->format("Y-m-d H:i:s"),
+          'IdContatto' => $operationData['CODCONTO'],
+          'Titolo' => $remoteItem->salutation,
+          'Nome' => $remoteItem->first_name,
+          'Cognome' => $remoteItem->last_name,
+          'Cellulare' => $remoteItem->phone_mobile,
+          'TelUfficio' => $remoteItem->phone_work,
+          'TelCasa' => $remoteItem->phone_home,
+          'Fax' => $remoteItem->phone_fax,
+          'Email' => $remoteItem->email1,
+          'Note' => substr($remoteItem->description, 225),
+          //
+          'UtenteModifica' => $this->METODO_UTENTEMODIFICA,
+          'DataModifica' => $now->format("Y-m-d H:i:s"),
         ];
 
         $operation = $operationData['sqlCommand'];
