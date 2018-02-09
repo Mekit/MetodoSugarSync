@@ -22,7 +22,7 @@ class AccountData extends Sync implements SyncInterface
   /*
    * All'inizio dell'anno nuovo vogliamo ancora vedere i fatturati se come fosse l'ultimo giorno dell'anno precedente
    */
-  const use_fixed_date = TRUE;
+  const use_fixed_date = FALSE;
   const fixed_date_value = "2017-12-31";
   const fixed_date_db_view_name = "SogCRM_AnagraficaCF_2017_12_31";
 
