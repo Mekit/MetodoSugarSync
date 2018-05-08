@@ -10,23 +10,24 @@ namespace Mekit\DbCache;
 class ProductCache extends CacheDb {
     /** @var array */
     protected $columns = [
-        'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
-        'crm_id' => ['type' => 'TEXT', 'index' => FALSE],
-        'database_metodo' => ['type' => 'TEXT', 'index' => TRUE],
-        'cat_main_id' => ['type' => 'TEXT', 'index' => TRUE],
-        'cat_main_name' => ['type' => 'TEXT', 'index' => FALSE],
-        'cat_sub_id' => ['type' => 'TEXT', 'index' => TRUE],
-        'cat_sub_name' => ['type' => 'TEXT', 'index' => FALSE],
-        'description' => ['type' => 'TEXT', 'index' => FALSE],
-        'measurement_unit_c' => ['type' => 'TEXT', 'index' => FALSE],
-        'stock_c' => ['type' => 'INTEGER', 'index' => FALSE],
-        'price' => ['type' => 'TEXT', 'index' => FALSE],
-        'price_lst_9997_c' => ['type' => 'TEXT', 'index' => FALSE],
-        'price_lst_10000_c' => ['type' => 'TEXT', 'index' => FALSE],
-        'cost' => ['type' => 'TEXT', 'index' => FALSE],
-        'sold_last_120_days_c' => ['type' => 'TEXT', 'index' => FALSE],
-        'metodo_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE],
-        'crm_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE]
+      'id' => ['type' => 'TEXT', 'index' => TRUE, 'unique' => TRUE],
+      'crm_id' => ['type' => 'TEXT', 'index' => FALSE],
+      'database_metodo' => ['type' => 'TEXT', 'index' => TRUE],
+      'cat_main_id' => ['type' => 'TEXT', 'index' => TRUE],
+      'cat_main_name' => ['type' => 'TEXT', 'index' => FALSE],
+      'cat_sub_id' => ['type' => 'TEXT', 'index' => TRUE],
+      'cat_sub_name' => ['type' => 'TEXT', 'index' => FALSE],
+      'description' => ['type' => 'TEXT', 'index' => FALSE],
+      'full_description' => ['type' => 'TEXT', 'index' => FALSE],
+      'measurement_unit_c' => ['type' => 'TEXT', 'index' => FALSE],
+      'stock_c' => ['type' => 'INTEGER', 'index' => FALSE],
+      'price' => ['type' => 'TEXT', 'index' => FALSE],
+      'price_lst_9997_c' => ['type' => 'TEXT', 'index' => FALSE],
+      'price_lst_10000_c' => ['type' => 'TEXT', 'index' => FALSE],
+      'cost' => ['type' => 'TEXT', 'index' => FALSE],
+      'sold_last_120_days_c' => ['type' => 'TEXT', 'index' => FALSE],
+      'metodo_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE],
+      'crm_last_update_time_c' => ['type' => 'TEXT', 'index' => FALSE]
     ];
 
     /**

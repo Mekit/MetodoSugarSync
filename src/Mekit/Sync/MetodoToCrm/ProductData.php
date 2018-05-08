@@ -122,9 +122,12 @@ class ProductData extends Sync implements SyncInterface
     $this->registerRemoteProductCategories();
   }
 
+  /**
+   * Update on CRM
+   */
   protected function updateRemoteProductsFromCache()
   {
-    $this->log("updating remote(products)...");
+    $this->log("Building category tree...");
     $this->productCache->resetItemWalker();
     while ($cacheItem = $this->productCache->getNextItem())
     {
@@ -142,13 +145,18 @@ class ProductData extends Sync implements SyncInterface
         $this->productCache->resetItemWalker();
         break;
       }
+
       $this->counters["remote"]["index"]++;
       $remoteProductItem = $this->saveProductOnRemote($cacheItem);
+
+
       $remoteRelationItem = $this->saveRelationshipProductToCategoryOnRemote($remoteProductItem, $cacheItem);
+
       if ($remoteProductItem && $remoteRelationItem)
       {
         $this->storeCrmIdForCachedProduct($cacheItem, $remoteProductItem);
       }
+
     }
   }
 
@@ -185,7 +193,7 @@ class ProductData extends Sync implements SyncInterface
     try
     {
       $result = $this->sugarCrmRest->comunicate('set_relationship', $arguments);
-      $this->log("RELATIONSHIP RESULT: " . json_encode($result));
+      //$this->log("RELATIONSHIP RESULT: " . json_encode($result));
       if (!isset($result->created) || $result->created != 1)
       {
         $this->log("RELATIONSHIP ERROR!!! - " . json_encode($arguments));
@@ -211,17 +219,22 @@ class ProductData extends Sync implements SyncInterface
 
     if ($metodoLastUpdate > $crmLastUpdate)
     {
+      /*
       $this->log(
         "-----------------------------------------------------------------------------------------"
-        . $this->counters["remote"]["index"]
-      );
+        . "(".$this->counters["remote"]["index"] ."): "
+        . $cacheItem->id
+      );*/
+
+      $logMessage = "(" . $this->counters["remote"]["index"] . "): " . $cacheItem->id;
 
       try
       {
         $crm_id = $this->loadRemoteProductId($cacheItem->id);
       } catch(\Exception $e)
       {
-        $this->log("CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED");
+        $logMessage = $logMessage . "CANNOT LOAD ID FROM CRM - UPDATE WILL BE SKIPPED";
+        $this->log($logMessage);
         return $result;
       }
 
@@ -239,17 +252,23 @@ class ProductData extends Sync implements SyncInterface
 
       $syncItem->part_number = $cacheItem->id;
       $syncItem->crm_last_update_time_c = $metodoLastUpdate->format("Y-m-d H:i:s");
+
       $syncItem->name = $syncItem->description;
-      unset($syncItem->description);
+      $syncItem->description = $syncItem->full_description;
+      unset($syncItem->full_description);
 
-      $syncItem->cost = $this->fixCurrency($syncItem->cost);
-      $syncItem->cost_usdollar = $this->fixCurrency($syncItem->cost);
-      $syncItem->price = $this->fixCurrency($syncItem->price);
-      $syncItem->price_usdollar = $this->fixCurrency($syncItem->price);
+      $syncItem->cost = $this->fixNumberForCrm($syncItem->cost);
+      $syncItem->cost_usdollar = $this->fixNumberForCrm($syncItem->cost);
 
-      $syncItem->price_lst_9997_c = $this->fixCurrency($syncItem->price_lst_9997_c);
-      $syncItem->price_lst_10000_c = $this->fixCurrency($syncItem->price_lst_10000_c);
-      $syncItem->sold_last_120_days_c = $this->fixCurrency($syncItem->sold_last_120_days_c);
+      $syncItem->price = $this->fixNumberForCrm($syncItem->price);
+      $syncItem->price_usdollar = $this->fixNumberForCrm($syncItem->price);
+
+      $syncItem->price_lst_9997_c = $this->fixNumberForCrm($syncItem->price_lst_9997_c);
+      $syncItem->price_lst_10000_c = $this->fixNumberForCrm($syncItem->price_lst_10000_c);
+
+      $syncItem->sold_last_120_days_c = $this->fixNumberForCrm($syncItem->sold_last_120_days_c);
+
+      $syncItem->stock_c = $this->fixNumberForCrm($syncItem->stock_c);
 
       //create arguments for rest
       $arguments = [
@@ -257,21 +276,38 @@ class ProductData extends Sync implements SyncInterface
         'name_value_list' => $this->sugarCrmRest->createNameValueListFromObject($syncItem),
       ];
 
-      $this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
+      //$this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
+      $success = FALSE;
 
       try
       {
+
         $result = $this->sugarCrmRest->comunicate('set_entries', $arguments);
-        $this->log("PRODUCT UPDATE RESULT: " . json_encode($result));
+        if (isset($result->ids) && is_array($result->ids) && count($result->ids) == 1)
+        {
+          if ($restOperation == "INSERT" || ($restOperation == "UPDATE" && $result->ids[0] == $crm_id))
+          {
+            $success = TRUE;
+          }
+        }
+
+        $logMessage = $logMessage . "  ---> " . ($success ? "OK" : "FAIL");
+        $this->log($logMessage);
+
       } catch(SugarCrmRestException $e)
       {
         //go ahead with false silently
-        $this->log("REMOTE ERROR!!! - " . $e->getMessage());
-        //we must remove crm_id from $cacheItem
-        //create fake result
+        $logMessage = $logMessage . "  ---> " . "FAIL: " . $e->getMessage();
+        $this->log($logMessage);
+        $this->log("CRM SYNC ITEM[" . $restOperation . "]: " . json_encode($arguments));
+      }
+
+      if (!$success)
+      {
         $result = new \stdClass();
         $result->updateFailure = TRUE;
       }
+
     }
     return $result;
   }
@@ -732,14 +768,15 @@ class ProductData extends Sync implements SyncInterface
     //LOG
     if ($operation != "skip")
     {
-      $this->log(
-        "-----------------------------------------------------------------------------------------"
-        . $this->counters["cache"]["index"]
-      );
-      $this->log("[" . $itemDb . "][" . json_encode($operation) . "]:");
+      $logMessage = "(" . $this->counters["cache"]["index"] . ")" . "[" . $itemDb . "]" . "[" . $operation . "]"
+                    . " --> " . $localItem->id;
+
+
+      $this->log($logMessage);
+
       //$this->log("LOCAL: " . json_encode($localItem));
       //$this->log("CACHED: " . json_encode($cachedItem));
-      $this->log("UPDATE: " . json_encode($updateItem));
+      //$this->log("UPDATE: " . json_encode($updateItem));
 
     }
     if (!empty($warnings))
@@ -803,6 +840,7 @@ class ProductData extends Sync implements SyncInterface
                 P.CodiceCategoria AS cat_sub_id,
                 P.DescrizioneCategoria AS cat_sub_name,
                 P.DescrizioneArticolo AS description,
+                P.DescrizioneEstesa AS full_description,
                 P.Um AS measurement_unit_c,
                 P.Giacenza AS stock_c,
                 P.Listino42 AS price,
@@ -817,9 +855,10 @@ class ProductData extends Sync implements SyncInterface
                 P.LA9999_DATAMODIFICA,
                 P.LA10000_DATAMODIFICA
                 FROM [${database}].[dbo].[Sog_VistaArticoliMagazzinoUltimi120gg_v2] AS P
-                WHERE P.CodiceCategoria IS NOT NULL AND P.CodiceCategoria <> '0'
+                WHERE P.CodiceCategoria IS NOT NULL 
+                AND P.CodiceCategoria <> '0'
                 ORDER BY P.CodiceArticolo;
-            ";
+            ";/*                 AND P.CodiceArticolo = 'PDBI8S800' */
       $this->localItemStatement = $db->prepare($sql);
       $this->localItemStatement->execute();
     }
@@ -898,7 +937,7 @@ class ProductData extends Sync implements SyncInterface
    * @param string $numberString
    * @return string
    */
-  protected function fixCurrency($numberString)
+  protected function fixNumberForCrm($numberString)
   {
     $numberString = ($numberString ? $numberString : '0');
     $numberString = str_replace('.', ',', $numberString);
