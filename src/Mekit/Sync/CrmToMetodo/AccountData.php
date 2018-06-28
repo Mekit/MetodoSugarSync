@@ -43,6 +43,7 @@ class AccountData extends Sync implements SyncInterface
       'database' => 'IMP',
       'prefix' => 'F'
     ],
+    /*
     'mekit_sync_as_client_c' => [
       'codeColumn' => 'mekit_metodo_client_code_c',
       'database' => 'MEKIT',
@@ -52,7 +53,7 @@ class AccountData extends Sync implements SyncInterface
       'codeColumn' => 'mekit_metodo_supplier_code_c',
       'database' => 'MEKIT',
       'prefix' => 'F'
-    ]
+    ]*/
   ];
 
   /** @var  string */

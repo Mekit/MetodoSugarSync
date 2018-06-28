@@ -36,10 +36,12 @@ class ContactCache extends CacheDb {
 
 
     /**
-     * @param array $filter
+     * @param array  $filter
+     * @param string $order
      * @return bool|array
      */
-    public function loadItems($filter) {
+  public function loadItems($filter, $order = NULL)
+  {
         $answer = FALSE;
         /* These fields contain json encoded multiple elements*/
         $multipleDataFields = [];

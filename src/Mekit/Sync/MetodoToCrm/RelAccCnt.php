@@ -89,7 +89,8 @@ class RelAccCnt extends Sync implements SyncInterface {
     protected function updateLocalCache() {
         $this->log("updating local cache...");
         $this->counters["cache"]["index"] = 0;
-        foreach (["MEKIT", "IMP"] as $database) {
+      foreach (["IMP"] as $database)
+      {
             while ($localItem = $this->getNextLocalItem($database)) {
                 $this->counters["cache"]["index"]++;
                 $this->saveLocalItemInCache($localItem);

@@ -96,7 +96,7 @@ class AccountData extends Sync implements SyncInterface
   {
     $this->log("updating local cache...");
     $this->counters["cache"]["index"] = 0;
-    foreach (["MEKIT", "IMP"] as $database)
+    foreach (["IMP"] as $database)
     {
       while ($localItem = $this->getNextLocalItem($database))
       {
@@ -623,15 +623,6 @@ class AccountData extends Sync implements SyncInterface
       $cacheUpdateItem->codice_fiscale_c = $localItem->CodiceFiscale;
     }
 
-    //codice agente - moved under getLocalItemPayload
-    //        if(!empty($localItem->CodiceAgente)) {
-    //            if($localItem->database == "IMP") {
-    //                $cacheUpdateItem->imp_agent_code_c = $localItem->CodiceAgente;
-    //            } else if($localItem->database == "MEKIT") {
-    //                $cacheUpdateItem->mekit_agent_code_c = $localItem->CodiceAgente;
-    //            }
-    //        }
-
     //DECIDE OPERATION(better to keep this off for now)
     $operation = ($cachedItem == $cacheUpdateItem) ? "skip" : $operation;
 
@@ -722,7 +713,7 @@ class AccountData extends Sync implements SyncInterface
   {
     $answer = FALSE;
     $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $databases = ["IMP", "MEKIT"];
+    $databases = ["IMP"];
     $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
     $items = [];
     foreach ($databases as $database)
@@ -823,7 +814,7 @@ class AccountData extends Sync implements SyncInterface
   {
     $answer = FALSE;
     $db = Configuration::getDatabaseConnection("SERVER2K8");
-    $databases = ["IMP", "MEKIT"];
+    $databases = ["IMP"];
     $fieldNames = $this->getNonEmptyMetodoCodeFieldNamesFromCacheItem($cacheItem);
     $items = [];
     foreach ($databases as $database)
@@ -927,7 +918,7 @@ class AccountData extends Sync implements SyncInterface
   {
     //$this->log("INVOICE CALC PAYLOAD " . json_encode($payload));
 
-    $databases = ["IMP", "MEKIT"];
+    $databases = ["IMP"];
     foreach ($databases as $database)
     {
       //$this->log(str_repeat("-", 80) . $database);
@@ -1227,7 +1218,7 @@ class AccountData extends Sync implements SyncInterface
 
 
   /**
-   * @param string $database IMP|MEKIT
+   * @param string $database IMP|other?
    * @return bool|\stdClass
    */
   protected function getNextLocalItem($database)

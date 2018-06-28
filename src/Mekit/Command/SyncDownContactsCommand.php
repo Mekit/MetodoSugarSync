@@ -71,7 +71,7 @@ class SyncDownContactsCommand extends Command implements CommandInterface {
         parent::_execute($input, $output);
         $this->log("Starting command " . static::COMMAND_NAME . "...");
         $dataClass = $this->getDataClass();
-        $dataClass->execute($input->getOptions());
+      $dataClass->execute($input->getOptions(), $input->getArguments());
         $this->log("Command " . static::COMMAND_NAME . " done.");
         return TRUE;
     }
